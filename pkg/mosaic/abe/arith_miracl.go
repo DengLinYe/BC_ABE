@@ -1,4 +1,4 @@
-// +build miracl
+//go:build !pbc
 
 package abe
 

@@ -54,9 +54,7 @@ func encodeAccessPolicy(t *btree) [][]int {
 	ap := make([][]int, len(aptmp))
 	for i := 0; i < len(aptmp); i++ {
 		ap[i] = make([]int, c)
-		for j := 0; j < len(aptmp[i]); j++ {
-			ap[i][j] = aptmp[i][j]
-		}
+		copy(ap[i], aptmp[i])
 	}
 	return ap
 }
