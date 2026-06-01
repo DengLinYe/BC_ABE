@@ -9,5 +9,6 @@ require (
 
 require (
 	github.com/hyperledger/fabric-gateway v1.11.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	golang.org/x/sys v0.40.0 // indirect
 )
