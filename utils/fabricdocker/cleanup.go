@@ -57,6 +57,32 @@ func Cleanup(opts CleanupOptions) error {
 	return nil
 }
 
+// CleanupVolumes 删除 test-network 产生的命名卷，用于完整清理账本状态。
+func CleanupVolumes() error {
+	lines, err := dockerOutput("volume", "ls", "-q")
+	if err != nil {
+		return err
+	}
+	for _, name := range splitLines(lines) {
+		if !isFabricTestVolume(name) {
+			continue
+		}
+		if err := docker("volume", "rm", "-f", name); err != nil {
+			log.Warn("remove volume %s: %v", name, err)
+			continue
+		}
+		log.Info("removed volume: %s", name)
+	}
+	return nil
+}
+
+func isFabricTestVolume(name string) bool {
+	return strings.HasPrefix(name, "compose_") ||
+		strings.Contains(name, "peer0.org1.example.com") ||
+		strings.Contains(name, "peer0.org2.example.com") ||
+		strings.Contains(name, "orderer.example.com")
+}
+
 func removeByNames(names []string) {
 	for _, name := range names {
 		name = strings.TrimSpace(name)

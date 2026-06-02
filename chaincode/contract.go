@@ -173,11 +173,21 @@ func (c *ABELedger) DeleteCiphertext(ctx contractapi.TransactionContextInterface
 	return ctx.GetStub().DelState(ciphertextKey(id))
 }
 
-// ListCiphertextIDs 列出所有密文 ID。
-func (c *ABELedger) ListCiphertextIDs(ctx contractapi.TransactionContextInterface) ([]string, error) {
-	iter, err := ctx.GetStub().GetStateByRange("CT::", "CT::\xff")
+// GetEvaluateTransactions 只读查询（避免被当作 submit 且便于 Gateway evaluate）。
+func (c *ABELedger) GetEvaluateTransactions() []string {
+	return []string{
+		"GetGlobalParams",
+		"GetCiphertext",
+		"ListCiphertextIDs",
+	}
+}
+
+// ListCiphertextIDs 列出所有密文 ID（JSON 数组字符串；直接返回 []string 会导致 CCAAS 链码进程崩溃）。
+func (c *ABELedger) ListCiphertextIDs(ctx contractapi.TransactionContextInterface) (string, error) {
+	// 结束键必须是合法 UTF-8；`CT::\xff` 会在 shim 序列化 range 结果时触发 panic。
+	iter, err := ctx.GetStub().GetStateByRange("CT::", "CT;")
 	if err != nil {
-		return nil, fmt.Errorf("range query: %w", err)
+		return "", fmt.Errorf("range query: %w", err)
 	}
 	defer iter.Close()
 
@@ -185,11 +195,15 @@ func (c *ABELedger) ListCiphertextIDs(ctx contractapi.TransactionContextInterfac
 	for iter.HasNext() {
 		kv, err := iter.Next()
 		if err != nil {
-			return nil, fmt.Errorf("iterate: %w", err)
+			return "", fmt.Errorf("iterate: %w", err)
 		}
 		ids = append(ids, trimCiphertextKey(kv.Key))
 	}
-	return ids, nil
+	payload, err := json.Marshal(ids)
+	if err != nil {
+		return "", fmt.Errorf("marshal ids: %w", err)
+	}
+	return string(payload), nil
 }
 
 func ciphertextKey(id string) string {

@@ -408,7 +408,10 @@ func (userattrs *UserAttrs) SelectUserAttrs(user string, policy string) *UserAtt
 		var ap_ [][]int
 		row_idx := make(map[string][]int)
 		i_ := 0
-		for attr, _ := range userattrs.Coeff {
+		for attr := range userattrs.Userkey {
+			if _, ok := userattrs.Coeff[attr]; !ok {
+				userattrs.Coeff[attr] = []int{}
+			}
 			if rows, exist := ap.Row[attr]; exist {
 				for _, i := range rows {
 					ap_row := make([]int, len(ap.M[i]))

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	abeengine "bc_abe/abe"
 	"bc_abe/utils/apperr"
@@ -27,17 +28,55 @@ func NewKeyService(cfg config.Config, engine *abeengine.Engine) *KeyService {
 	return &KeyService{cfg: cfg, engine: engine}
 }
 
-func (s *KeyService) RequestKey(userID uint, attribute string) (int, error) {
+func (s *KeyService) RequestKey(userID uint, attribute string) (AutoKeyResult, error) {
 	authSvc := NewAuthService()
 	user, err := authSvc.GetUser(userID)
 	if err != nil {
-		return 0, err
+		return AutoKeyResult{}, err
 	}
-	attribute = normalizeAttribute(attribute, user.OrgName)
-	if !userHasAttribute(user, attribute) {
-		return 0, apperr.ErrUnauthorized
+	spec, err := parseAttrSpec(attribute, user.OrgName)
+	if err != nil {
+		return AutoKeyResult{}, apperr.Wrap(apperr.ErrInvalidInput, "attribute", err)
 	}
+	if !isPolicyStyleKeyAttr(spec.IssueAttr) && !userHasAttribute(user, spec.IssueAttr) {
+		return AutoKeyResult{}, apperr.ErrUnauthorized
+	}
+	n, err := s.issueAndStore(user, spec)
+	if err != nil {
+		return AutoKeyResult{}, err
+	}
+	return AutoKeyResult{Attribute: spec.DisplayLabel, Keys: n}, nil
+}
 
+type AutoKeyResult struct {
+	Attribute string `json:"attribute"`
+	Keys      int    `json:"keys"`
+}
+
+func (s *KeyService) RequestAutoKeys(userID uint, location, atTime string, hour *int, hourOp string) ([]AutoKeyResult, error) {
+	authSvc := NewAuthService()
+	user, err := authSvc.GetUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	h := parseKeyTime(atTime).Hour()
+	if hour != nil {
+		h = *hour
+	}
+	specs := s.autoAttributeSpecs(user, location, h, hourOp)
+	results := make([]AutoKeyResult, 0, len(specs))
+	for _, spec := range specs {
+		count, err := s.issueAndStore(user, spec)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, AutoKeyResult{Attribute: spec.DisplayLabel, Keys: count})
+	}
+	return results, nil
+}
+
+func (s *KeyService) issueAndStore(user *db.UserAccount, spec attrSpec) (int, error) {
+	attribute := spec.IssueAttr
 	body := canonicalIssueBody(user.Username, attribute)
 	bodyHash := sha256.Sum256(body)
 	sig, err := msp.SignASN1(user.KeyPEM, bodyHash[:])
@@ -78,43 +117,82 @@ func (s *KeyService) RequestKey(userID uint, attribute string) (int, error) {
 
 	var latest db.UserABEKey
 	version := 1
-	if err := db.Get().Where("user_id = ? AND attribute = ?", user.ID, attribute).Order("version desc").First(&latest).Error; err == nil {
+	q := db.Get().Where("user_id = ?", user.ID).
+		Where("attribute IN ?", []string{spec.DisplayLabel, spec.IssueAttr})
+	if err := q.Order("version desc").First(&latest).Error; err == nil {
 		version = latest.Version + 1
 	}
-	record := db.UserABEKey{UserID: user.ID, Attribute: attribute, Version: version, UserKeyJSON: userAttrsJSON}
+	record := db.UserABEKey{UserID: user.ID, Attribute: spec.DisplayLabel, Version: version, UserKeyJSON: userAttrsJSON}
 	if err := db.Get().Create(&record).Error; err != nil {
 		return 0, err
 	}
 	return len(userattrs.Userkey), nil
 }
 
-func (s *KeyService) MergeUserKeys(userID uint, username, policy string) *abeengine.UserAttrs {
+func (s *KeyService) autoAttributeSpecs(user *db.UserAccount, location string, hour int, hourOp string) []attrSpec {
+	seen := map[string]bool{}
+	var specs []attrSpec
+	add := func(spec attrSpec) {
+		if spec.IssueAttr == "" || seen[spec.IssueAttr] {
+			return
+		}
+		seen[spec.IssueAttr] = true
+		specs = append(specs, spec)
+	}
+	for _, attr := range UserAttributes(user) {
+		if sp, err := parseAttrSpec(attr, user.OrgName); err == nil {
+			add(sp)
+		}
+	}
+	add(hourAttrSpec(user.OrgName, hour, hourOp))
+	add(locAttrSpec(user.OrgName, location))
+	return specs
+}
+
+func (s *KeyService) MergeUserKeys(userID uint, username, _ string) *abeengine.UserAttrs {
 	var keys []db.UserABEKey
 	db.Get().Where("user_id = ?", userID).Find(&keys)
-	engine := abeengine.NewEngine("")
 	var merged *abeengine.UserAttrs
 	for _, k := range keys {
 		ua := abeengine.ParseUserAttrs(k.UserKeyJSON)
-		merged = engine.MergeUserKeys(merged, ua)
+		merged = s.engine.MergeUserKeys(merged, ua)
 	}
 	if merged == nil {
-		return &abeengine.UserAttrs{User: username, Coeff: map[string][]int{}, Userkey: map[string]*abeengine.Userkey{}}
+		return abeengine.NewEmptyUserAttrs(username)
 	}
 	merged.User = username
-	return abeengine.SelectUserAttrs(merged, username, policy)
+	// 解密时由 engine.Decrypt 按策略重算系数；此处仅合并密钥，不做时间/地点等运行时校验。
+	for attr := range merged.Userkey {
+		if _, ok := merged.Coeff[attr]; !ok {
+			merged.Coeff[attr] = []int{}
+		}
+	}
+	return merged
+}
+
+func parseKeyTime(atTime string) time.Time {
+	atTime = strings.TrimSpace(atTime)
+	if atTime == "" {
+		return time.Now()
+	}
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, atTime, time.Local); err == nil {
+			return t
+		}
+	}
+	return time.Now()
 }
 
 func canonicalIssueBody(user, attribute string) []byte {
 	body, _ := json.Marshal(map[string]string{"attribute": attribute, "user": user})
 	return body
-}
-
-func normalizeAttribute(attribute, orgName string) string {
-	attribute = strings.TrimSpace(attribute)
-	if strings.Contains(attribute, "@") {
-		return attribute
-	}
-	return attribute + "@" + config.AuthNameForOrg(orgName)
 }
 
 func userHasAttribute(user *db.UserAccount, attribute string) bool {

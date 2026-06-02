@@ -24,7 +24,22 @@ type KeyRequest struct {
 	Attribute string `json:"attribute" binding:"required"`
 }
 
+type AutoKeyRequest struct {
+	UserID   uint   `json:"userId" binding:"required"`
+	Location string `json:"location"`
+	// Hour 0–23，与 HourOp 组成 hour@auth == N。
+	Hour   *int   `json:"hour"`
+	HourOp string `json:"hourOp"`
+	// AtTime 兼容旧前端；未传 Hour 时从中取小时。
+	AtTime string `json:"atTime"`
+}
+
 type DecryptRequest struct {
+	UserID  uint   `json:"userId" binding:"required"`
+	AssetID string `json:"assetId" binding:"required"`
+}
+
+type DeleteFileRequest struct {
 	UserID  uint   `json:"userId" binding:"required"`
 	AssetID string `json:"assetId" binding:"required"`
 }

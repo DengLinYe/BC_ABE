@@ -3,262 +3,461 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BC ABE 用户客户端</title>
+  <title>BC-ABE</title>
   <style>
     :root {
-      --bg: #f4f6fb;
-      --card: #fff;
-      --border: #e2e8f0;
-      --text: #1e293b;
+      --bg: #eef2ff;
+      --card: rgba(255,255,255,0.9);
+      --text: #0f172a;
       --muted: #64748b;
-      --primary: #2563eb;
+      --line: #dbe4ff;
+      --primary: #4f46e5;
       --danger: #dc2626;
-      --success: #059669;
+      --ok: #059669;
+      --shadow: 0 18px 45px rgba(79, 70, 229, 0.16);
     }
     * { box-sizing: border-box; }
     body {
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
       margin: 0;
-      padding: 2rem 1rem 3rem;
+      min-height: 100vh;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, #c7d2fe, transparent 34rem),
+        radial-gradient(circle at bottom right, #bfdbfe, transparent 32rem),
+        var(--bg);
     }
-    .wrap { max-width: 920px; margin: 0 auto; }
-    h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
-    .subtitle { color: var(--muted); margin-bottom: 1.25rem; }
-    .alert {
-      display: none;
-      padding: 0.85rem 1rem;
-      border-radius: 8px;
-      margin-bottom: 1rem;
-      white-space: pre-wrap;
-      word-break: break-word;
+    header {
+      height: 72px;
+      display: grid;
+      grid-template-columns: 88px 1fr 240px;
+      align-items: center;
+      padding: 0 28px;
+      background: rgba(255,255,255,0.72);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
     }
-    .alert.show { display: block; }
-    .alert.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
-    .alert.success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
-    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-    section {
+    .brand { text-align: center; font-weight: 800; letter-spacing: 0.16em; font-size: 1.35rem; }
+    .user { color: var(--muted); text-align: right; font-size: 0.9rem; position: relative; }
+    .user:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      right: 0;
+      top: 28px;
+      width: 260px;
+      white-space: normal;
+      padding: 12px;
+      border-radius: 14px;
+      color: var(--text);
+      background: #fff;
+      box-shadow: var(--shadow);
+      text-align: left;
+    }
+    main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; }
+    .card {
       background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.1rem 1.2rem;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 26px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
     }
-    section h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
-    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 0.55rem 0 0.25rem; }
-    input, textarea, select, button {
+    .auth { max-width: 440px; margin: 36px auto; }
+    h2 { margin: 0 0 18px; }
+    label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 0.88rem; }
+    input, textarea, select {
       width: 100%;
-      padding: 0.55rem 0.65rem;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
       font: inherit;
+      background: #fff;
+      outline: none;
     }
-    textarea { resize: vertical; min-height: 88px; }
-    .row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
-    .row button { flex: 1; cursor: pointer; }
-    button {
+    textarea { min-height: 150px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .stack { display: grid; gap: 14px; }
+    .hidden { display: none !important; }
+    .icon {
+      border: 0;
+      border-radius: 999px;
+      width: 44px;
+      height: 44px;
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
       background: var(--primary);
       color: #fff;
-      border: none;
-      font-weight: 600;
+      box-shadow: 0 10px 24px rgba(79, 70, 229, 0.25);
+      font-size: 1.1rem;
     }
-    button.secondary { background: #475569; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .user-bar {
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      border-radius: 8px;
-      padding: 0.65rem 0.85rem;
-      margin-bottom: 1rem;
-      font-size: 0.92rem;
-    }
-    pre {
-      background: #0f172a;
-      color: #e2e8f0;
-      padding: 1rem;
-      border-radius: 10px;
-      overflow: auto;
-      font-size: 0.85rem;
-      margin-top: 1rem;
-    }
+    .icon.gray { background: #475569; }
+    .icon.red { background: var(--danger); }
+    .icon.green { background: var(--ok); }
+    .icon.big { width: 112px; height: 112px; font-size: 2.2rem; }
+    .actions { display: flex; justify-content: center; align-items: center; gap: 42px; margin-bottom: 28px; }
+    .chips { min-height: 50px; border: 1px dashed var(--line); border-radius: 18px; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; background: rgba(255,255,255,0.55); }
+    .chip { display: inline-flex; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 999px; background: #eef2ff; color: #312e81; font-size: 0.88rem; }
+    .chip button { border: 0; background: transparent; color: #312e81; cursor: pointer; font-weight: 700; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+    .tab { border: 0; padding: 10px 16px; border-radius: 999px; cursor: pointer; background: #e0e7ff; color: #312e81; }
+    .tab.active { background: var(--primary); color: #fff; }
+    .table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    .table th, .table td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 0.92rem; }
+    .table th { color: var(--muted); font-weight: 600; }
+    .modal { position: fixed; inset: 0; display: none; place-items: center; background: rgba(15, 23, 42, 0.35); z-index: 20; padding: 20px; }
+    .modal.show { display: grid; }
+    .dialog { width: min(720px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 28px; padding: 24px; box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35); }
+    .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .msg { white-space: pre-wrap; word-break: break-word; color: var(--muted); }
+    .policy-preview { background: #0f172a; color: #e2e8f0; border-radius: 18px; padding: 14px; min-height: 52px; overflow: auto; }
+    .spacer { flex: 1; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>ABE + Fabric 用户客户端</h1>
-    <p class="subtitle">注册登录、文件加密上链、属性密钥申请与解密</p>
+  <header>
+    <button id="logoutBtn" class="icon gray hidden" title="退出登录" onclick="logout()">←</button>
+    <div class="brand">BC-ABE</div>
+    <div id="userInfo" class="user"></div>
+  </header>
 
-    <div id="alert" class="alert" role="alert"></div>
-    <div id="userBar" class="user-bar" style="display:none"></div>
+  <main>
+    <section id="authPage" class="card auth">
+      <div class="tabs">
+        <button id="loginTab" class="tab active" onclick="showAuth('login')">登录</button>
+        <button id="registerTab" class="tab" onclick="showAuth('register')">注册</button>
+      </div>
 
-    <div class="grid">
-      <section>
-        <h2>注册 / 登录</h2>
-        <label for="username">用户名</label>
-        <input id="username" placeholder="新用户注册名" />
-        <label for="password">密码</label>
-        <input id="password" type="password" placeholder="密码" />
-        <label for="orgName">组织</label>
-        <select id="orgName">
-          <option value="org1">org1</option>
-          <option value="org2">org2</option>
-        </select>
-        <label for="attributes">属性（逗号分隔，如 member,admin）</label>
-        <input id="attributes" placeholder="member" />
-        <div class="row">
-          <button onclick="register()">注册</button>
-          <button class="secondary" onclick="login()">登录</button>
+      <div id="loginPane">
+        <label>用户名</label>
+        <input id="loginUser" />
+        <label>密码</label>
+        <input id="loginPass" type="password" />
+        <label>组织</label>
+        <select id="loginOrg"><option>org1</option><option>org2</option></select>
+        <div class="row" style="margin-top:18px;justify-content:flex-end">
+          <button class="icon green" title="登录" onclick="login()">✓</button>
         </div>
-        <p style="font-size:0.82rem;color:var(--muted);margin:0.75rem 0 0">
-          预置账号：admin@org1 / org1adminpw，user1@org1 / user1pw
-        </p>
-      </section>
+      </div>
 
-      <section>
-        <h2>文件加密</h2>
-        <label for="content">明文内容</label>
-        <textarea id="content" placeholder="待加密文本"></textarea>
-        <label for="policy">访问策略</label>
-        <input id="policy" placeholder="member@auth0" />
-        <button onclick="encryptFile()">加密并上链</button>
-      </section>
+      <div id="registerPane" class="hidden">
+        <label>用户名</label>
+        <input id="regUser" />
+        <label>密码</label>
+        <input id="regPass" type="password" />
+        <label>组织</label>
+        <select id="regOrg"><option>org1</option><option>org2</option></select>
+        <label>属性</label>
+        <div id="regChips" class="chips"></div>
+        <div class="row" style="margin-top:10px">
+          <input id="attrName" placeholder="属性名，如 role 或 score" />
+          <span>=</span>
+          <input id="attrValue" placeholder="数值，可空" />
+          <button class="icon" title="添加属性" onclick="addRegisterAttr()">+</button>
+        </div>
+        <div class="row" style="margin-top:18px;justify-content:flex-end">
+          <button class="icon green" title="注册" onclick="register()">✓</button>
+        </div>
+      </div>
+    </section>
 
-      <section>
-        <h2>密钥 / 解密</h2>
-        <label for="attribute">申请属性</label>
-        <input id="attribute" placeholder="member@auth0" />
-        <button onclick="requestKey()">申请 ABE 密钥</button>
-        <label for="assetId">密文资产 ID</label>
-        <input id="assetId" placeholder="加密返回的 assetId" />
-        <button onclick="decryptFile()">解密文件</button>
+    <section id="mainPage" class="hidden">
+      <div class="actions">
+        <button class="icon big" title="上传" onclick="openUpload()">↑</button>
+        <button class="icon big green" title="密钥申请" onclick="openKeyDialog()">⚿</button>
+        <button class="icon big gray" title="下载" onclick="openDownload()">↓</button>
+      </div>
+
+      <section class="card">
+        <div class="row">
+          <h2 style="margin:0">我的文件</h2>
+          <div class="spacer"></div>
+          <button class="icon gray" title="刷新" onclick="loadFiles(true)">↻</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>ID</th><th>策略</th><th>版本</th><th>更新时间</th><th></th></tr></thead>
+          <tbody id="ownedFiles"></tbody>
+        </table>
       </section>
+    </section>
+  </main>
+
+  <div id="modal" class="modal">
+    <div class="dialog">
+      <div class="dialog-head">
+        <h2 id="modalTitle"></h2>
+        <button class="icon gray" title="关闭" onclick="closeModal()">×</button>
+      </div>
+      <div id="modalBody"></div>
     </div>
-
-    <pre id="output">等待操作…</pre>
   </div>
 
   <script>
-    let currentUser = null;
     const $ = (id) => document.getElementById(id);
+    const state = { user: null, regAttrs: [], policyParts: [], policyOps: [], editingAsset: null };
 
-    function showAlert(type, message) {
-      const el = $('alert');
-      el.className = 'alert show ' + type;
-      el.textContent = message;
+    function authName(org) { return org === 'org2' ? 'auth1' : 'auth0'; }
+    function withAuth(attr, org) { return attr.includes('@') ? attr : `${attr}@${authName(org)}`; }
+    function modal(title, html) { $('modalTitle').textContent = title; $('modalBody').innerHTML = html; $('modal').classList.add('show'); }
+    function closeModal() { $('modal').classList.remove('show'); }
+    function message(title, msg) { modal(title, `<div class="msg">${escapeHtml(String(msg))}</div>`); }
+    function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    async function api(path, body, method = 'POST') {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.code !== 0) throw new Error(json.message || json.error || `HTTP ${res.status}`);
+      return json.data;
     }
 
-    function clearAlert() {
-      $('alert').className = 'alert';
-      $('alert').textContent = '';
+    function showAuth(mode) {
+      $('loginPane').classList.toggle('hidden', mode !== 'login');
+      $('registerPane').classList.toggle('hidden', mode !== 'register');
+      $('loginTab').classList.toggle('active', mode === 'login');
+      $('registerTab').classList.toggle('active', mode === 'register');
     }
 
-    function renderUser() {
-      const bar = $('userBar');
-      if (!currentUser) {
-        bar.style.display = 'none';
-        return;
-      }
-      bar.style.display = 'block';
-      bar.textContent = `当前用户：${currentUser.username}（${currentUser.orgName || ''}，id=${currentUser.id}）`;
+    function renderRegAttrs() {
+      $('regChips').innerHTML = state.regAttrs.map((a, i) => `<span class="chip">${escapeHtml(a)}<button onclick="removeRegAttr(${i})">×</button></span>`).join('');
     }
-
-    function out(v) {
-      $('output').textContent = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+    function addRegisterAttr() {
+      const name = $('attrName').value.trim();
+      const value = $('attrValue').value.trim();
+      if (!name) return;
+      state.regAttrs.push(value ? `${name}=${value}` : name);
+      $('attrName').value = ''; $('attrValue').value = '';
+      renderRegAttrs();
     }
-
-    async function api(path, body) {
-      clearAlert();
-      let res;
-      try {
-        res = await fetch(path, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-      } catch (e) {
-        showAlert('error', '网络请求失败：' + e.message);
-        throw e;
-      }
-      let json;
-      try {
-        json = await res.json();
-      } catch (e) {
-        showAlert('error', `HTTP ${res.status}：响应不是 JSON`);
-        throw new Error('invalid json');
-      }
-      if (!res.ok || json.code !== 0) {
-        const msg = json.message || `HTTP ${res.status}`;
-        showAlert('error', msg);
-        out(json);
-        throw new Error(msg);
-      }
-      showAlert('success', '操作成功');
-      out(json.data ?? json);
-      return json;
-    }
+    function removeRegAttr(i) { state.regAttrs.splice(i, 1); renderRegAttrs(); }
 
     async function register() {
-      if (!$('username').value || !$('password').value) {
-        return showAlert('error', '请填写用户名和密码');
-      }
       try {
-        const json = await api('/api/v1/register', {
-          username: $('username').value,
-          password: $('password').value,
-          orgName: $('orgName').value,
-          attributes: $('attributes').value,
+        await api('/api/v1/register', {
+          username: $('regUser').value.trim(),
+          password: $('regPass').value,
+          orgName: $('regOrg').value,
+          attributes: state.regAttrs.join(','),
         });
-        currentUser = json.data;
-        renderUser();
-      } catch (_) {}
+        $('regUser').value = ''; $('regPass').value = ''; state.regAttrs = []; renderRegAttrs();
+        message('注册成功', '用户已注册，可继续注册下一个用户。');
+      } catch (e) { message('注册失败', e.message); }
     }
 
     async function login() {
-      if (!$('username').value || !$('password').value) {
-        return showAlert('error', '请填写用户名和密码');
+      try {
+        const data = await api('/api/v1/login', {
+          username: $('loginUser').value.trim(),
+          password: $('loginPass').value,
+          orgName: $('loginOrg').value,
+        });
+        state.user = data;
+        $('authPage').classList.add('hidden');
+        $('mainPage').classList.remove('hidden');
+        $('logoutBtn').classList.remove('hidden');
+        $('userInfo').textContent = `${data.orgName} / ${data.username}`;
+        $('userInfo').dataset.tip = `属性：${data.attributes || '无'}`;
+        await loadFiles(true);
+      } catch (e) { message('登录失败', e.message); }
+    }
+    function logout() {
+      state.user = null;
+      $('authPage').classList.remove('hidden');
+      $('mainPage').classList.add('hidden');
+      $('logoutBtn').classList.add('hidden');
+      $('userInfo').textContent = '';
+    }
+
+    function openUpload(asset) {
+      state.editingAsset = asset || null;
+      state.policyParts = [];
+      state.policyOps = [];
+      const org = state.user?.orgName || 'org1';
+      modal(asset ? '修改文件' : '上传文件', `
+        <div class="stack">
+          <label>文本内容</label>
+          <textarea id="fileContent"></textarea>
+          <label>时间</label>
+          <div class="row">
+            <input type="number" id="polHour" min="0" max="23" value="${new Date().getHours()}" style="max-width:88px" />
+            <select id="polHourOp"><option value="==">==</option><option value=">=">&gt;=</option><option value="<=">&lt;=</option></select>
+            <select id="polHourOrg"><option value="org1" ${org==='org1'?'selected':''}>org1</option><option value="org2" ${org==='org2'?'selected':''}>org2</option></select>
+            <button class="icon" title="添加" onclick="addPolicyTime()">+</button>
+          </div>
+          <label>地点</label>
+          <div class="row">
+            <select id="polLoc"><option value="school">school</option><option value="home">home</option><option value="others">others</option></select>
+            <select id="polLocOrg"><option value="org1" ${org==='org1'?'selected':''}>org1</option><option value="org2" ${org==='org2'?'selected':''}>org2</option></select>
+            <button class="icon" title="添加" onclick="addPolicyLocation()">+</button>
+          </div>
+          <label>属性</label>
+          <div class="row">
+            <input id="polName" placeholder="名称" />
+            <select id="polOp"><option value="">字符</option><option value="==">==</option><option value=">=">&gt;=</option><option value="<=">&lt;=</option><option value=">">&gt;</option><option value="<">&lt;</option></select>
+            <input id="polValue" placeholder="数值" style="max-width:88px" />
+            <select id="polOrg"><option value="org1">org1</option><option value="org2">org2</option></select>
+            <button class="icon" title="添加" onclick="addPolicyPart()">+</button>
+          </div>
+          <div class="row">
+            <button class="icon gray" title="并" onclick="setNextOp('and')">∧</button>
+            <button class="icon gray" title="或" onclick="setNextOp('or')">∨</button>
+            <button class="icon red" title="清空" onclick="clearPolicy()">↺</button>
+          </div>
+          <div id="policyPreview" class="policy-preview">空</div>
+          <div class="row" style="justify-content:flex-end"><button class="icon green" title="提交" onclick="submitFile()">✓</button></div>
+        </div>`);
+      if (asset) {
+        setTimeout(() => { $('policyPreview').textContent = asset.policy || '请重新设置策略'; }, 0);
       }
-      try {
-        const json = await api('/api/v1/login', {
-          username: $('username').value,
-          password: $('password').value,
-        });
-        currentUser = json.data;
-        renderUser();
-      } catch (_) {}
     }
 
-    async function encryptFile() {
-      if (!currentUser) return showAlert('error', '请先登录');
-      try {
-        const json = await api('/api/v1/files/encrypt', {
-          userId: currentUser.id,
-          filename: 'demo.txt',
-          content: $('content').value,
-          policy: $('policy').value,
-        });
-        if (json.data && json.data.assetId) $('assetId').value = json.data.assetId;
-      } catch (_) {}
+    function addPolicyTime() {
+      const hour = Number($('polHour').value);
+      if (Number.isNaN(hour) || hour < 0 || hour > 23) { message('策略', '小时须在 0–23'); return; }
+      const op = $('polHourOp').value;
+      const org = $('polHourOrg').value;
+      state.policyParts.push(`hour@${authName(org)} ${op} ${hour}`);
+      renderPolicy();
+    }
+    function addPolicyLocation() {
+      const loc = $('polLoc').value;
+      const org = $('polLocOrg').value;
+      state.policyParts.push(withAuth('loc' + loc, org));
+      renderPolicy();
     }
 
-    async function requestKey() {
-      if (!currentUser) return showAlert('error', '请先登录');
+    function policyJoinOp(op) {
+      return op === 'or' ? '\\/' : '/\\';
+    }
+    function setNextOp(op) { state.policyOps[state.policyParts.length] = op; }
+    function addPolicyPart() {
+      const name = $('polName').value.trim();
+      if (!name) return;
+      const op = $('polOp').value;
+      const value = $('polValue').value.trim();
+      const org = $('polOrg').value;
+      if (name.startsWith('hour') || /^loc(school|home|others)$/i.test(name)) {
+        message('策略', '时间、地点请用上方条目');
+        return;
+      }
+      let part = op
+        ? `${name}@${authName(org)} ${op} ${Number(value || 0)}`
+        : withAuth(name, org);
+      state.policyParts.push(part);
+      $('polName').value = '';
+      $('polValue').value = '';
+      renderPolicy();
+    }
+    function clearPolicy() { state.policyParts = []; state.policyOps = []; renderPolicy(); }
+    function currentPolicy() {
+      return state.policyParts.reduce((acc, part, i) => {
+        if (i === 0) return part;
+        return `(${acc} ${policyJoinOp(state.policyOps[i] || 'and')} ${part})`;
+      }, '');
+    }
+    function renderPolicy() { $('policyPreview').textContent = currentPolicy() || '空'; }
+
+    async function submitFile() {
       try {
-        await api('/api/v1/keys/request', {
-          userId: currentUser.id,
-          attribute: $('attribute').value,
-        });
-      } catch (_) {}
+        const payload = {
+          userId: state.user.id,
+          content: $('fileContent').value,
+          policy: currentPolicy(),
+        };
+        if (!payload.policy) throw new Error('请先添加策略');
+        const data = state.editingAsset
+          ? await api('/api/v1/files/update', { ...payload, assetId: state.editingAsset.assetId })
+          : await api('/api/v1/files/encrypt', { ...payload, filename: 'demo.txt' });
+        closeModal();
+        message('提交成功', `资产 ID：${data.assetId}`);
+        await loadFiles(true);
+      } catch (e) { message('提交失败', e.message); }
     }
 
-    async function decryptFile() {
-      if (!currentUser) return showAlert('error', '请先登录');
+    function localDateTimeValue(d = new Date()) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function openKeyDialog() {
+      const org = state.user?.orgName || 'org1';
+      const h = new Date().getHours();
+      modal('密钥申请', `
+        <div class="stack">
+          <label>时间</label>
+          <div class="row">
+            <input type="number" id="keyHour" min="0" max="23" value="${h}" style="max-width:88px" />
+            <select id="keyHourOp"><option value="==" selected>==</option><option value=">=">&gt;=</option></select>
+          </div>
+          <label>地点</label>
+          <select id="location"><option value="school">school</option><option value="home">home</option><option value="others">others</option></select>
+          <div class="row"><button class="icon green" title="一键申请" onclick="requestAutoKeys()">✓</button></div>
+          <label>手动</label>
+          <div class="row"><input id="manualAttr" placeholder="hour@auth0 == 20" /><button class="icon" title="申请" onclick="requestManualKey()">+</button></div>
+        </div>`);
+    }
+    async function requestAutoKeys() {
       try {
-        await api('/api/v1/files/decrypt', {
-          userId: currentUser.id,
-          assetId: $('assetId').value,
+        const hour = Number($('keyHour').value);
+        const data = await api('/api/v1/keys/auto', {
+          userId: state.user.id,
+          location: $('location').value,
+          hour: Number.isNaN(hour) ? undefined : hour,
+          hourOp: $('keyHourOp').value,
         });
-      } catch (_) {}
+        message('密钥申请成功', JSON.stringify(data.issued, null, 2));
+      } catch (e) { message('密钥申请失败', e.message); }
+    }
+    async function requestManualKey() {
+      try {
+        const data = await api('/api/v1/keys/request', { userId: state.user.id, attribute: $('manualAttr').value.trim() });
+        message('密钥申请成功', JSON.stringify(data, null, 2));
+      } catch (e) { message('密钥申请失败', e.message); }
+    }
+
+    async function loadFiles(ownedOnly) {
+      if (!state.user) return;
+      try {
+        const data = await api(`/api/v1/files?userId=${state.user.id}&ownedOnly=${ownedOnly ? 'true' : 'false'}`, undefined, 'GET');
+        renderFiles(data || [], ownedOnly);
+      } catch (e) { message('文件列表失败', e.message); }
+    }
+    function renderFiles(files, ownedOnly) {
+      const target = ownedOnly ? $('ownedFiles') : $('downloadFiles');
+      target.innerHTML = files.map(f => `
+        <tr>
+          <td title="${escapeHtml(f.assetId)}">${escapeHtml(shortId(f.assetId))}</td>
+          <td>${escapeHtml(f.policy || '')}</td>
+          <td>${f.version || ''}</td>
+          <td>${escapeHtml(f.updatedAt || '')}</td>
+          <td class="row">
+            ${ownedOnly ? `<button class="icon gray" title="修改" onclick='openUpload(${JSON.stringify(f)})'>✎</button><button class="icon red" title="删除" onclick="deleteFile('${escapeHtml(f.assetId)}')">⌫</button>` : ''}
+            <button class="icon green" title="解密" onclick="decryptFile('${escapeHtml(f.assetId)}')">↓</button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5">暂无文件</td></tr>';
+    }
+    function shortId(id) { return id.length > 28 ? id.slice(0, 28) + '…' : id; }
+
+    async function openDownload() {
+      modal('下载文件', '<table class="table"><thead><tr><th>ID</th><th>策略</th><th>版本</th><th>更新时间</th><th></th></tr></thead><tbody id="downloadFiles"></tbody></table>');
+      await loadFiles(false);
+    }
+    async function decryptFile(assetId) {
+      try {
+        const data = await api('/api/v1/files/decrypt', { userId: state.user.id, assetId });
+        message('解密成功', data.content);
+      } catch (e) { message('权限不足或解密失败', e.message); }
+    }
+    async function deleteFile(assetId) {
+      try {
+        await api('/api/v1/files/delete', { userId: state.user.id, assetId });
+        await loadFiles(true);
+      } catch (e) { message('删除失败', e.message); }
     }
   </script>
 </body>

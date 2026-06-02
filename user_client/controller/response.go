@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	abeengine "bc_abe/abe"
 	"bc_abe_uc/dto"
 	"bc_abe/utils/apperr"
 	"bc_abe/utils/logger"
@@ -43,8 +44,8 @@ func httpStatus(err error) int {
 		return http.StatusUnauthorized
 	case errors.Is(err, apperr.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, apperr.ErrInvalidInput):
-		return http.StatusConflict
+	case errors.Is(err, apperr.ErrInvalidInput), errors.Is(err, abeengine.ErrInvalidPolicy):
+		return http.StatusBadRequest
 	case errors.Is(err, apperr.ErrFabricNetwork), errors.Is(err, apperr.ErrGatewayConnect):
 		return http.StatusBadGateway
 	default:

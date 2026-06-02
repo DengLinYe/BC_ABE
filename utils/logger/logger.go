@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"bc_abe/utils/pathutil"
 )
 
 type Level int
@@ -21,18 +23,18 @@ const (
 
 // Logger 全局日志器。
 type Logger struct {
-	module      string
-	level       Level
-	console     bool
-	dir         string
-	currentDay  string
-	file        *os.File
-	mu          sync.Mutex
+	module     string
+	level      Level
+	console    bool
+	dir        string
+	currentDay string
+	file       *os.File
+	mu         sync.Mutex
 }
 
 var (
 	globalLevel = LevelInfo
-	logDir      = "./data/logs"
+	logDir      = pathutil.Abs("./data/logs")
 )
 
 // Init 初始化全局日志目录与级别。
@@ -57,7 +59,7 @@ func parseLevel(s string) Level {
 
 // New 创建模块日志器。
 func New(module string) *Logger {
-	return &Logger{module: module, level: globalLevel, console: true, dir: logDir}
+	return &Logger{module: module, level: globalLevel, console: true}
 }
 
 // SilentConsole 关闭控制台输出（用于脚本/建表等噪音场景）。
@@ -92,6 +94,10 @@ func (l *Logger) log(level Level, format string, args ...any) {
 }
 
 func (l *Logger) ensureFile(now time.Time) (io.Writer, error) {
+	dir := l.dir
+	if dir == "" {
+		dir = logDir
+	}
 	day := now.Format("2006-01-02")
 	if l.file != nil && l.currentDay == day {
 		return l.file, nil
@@ -100,11 +106,11 @@ func (l *Logger) ensureFile(now time.Time) (io.Writer, error) {
 		_ = l.file.Close()
 		l.file = nil
 	}
-	if err := os.MkdirAll(l.dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return os.Stderr, err
 	}
-	cleanupOldLogs(l.dir, 7)
-	path := filepath.Join(l.dir, fmt.Sprintf("%s.log", day))
+	cleanupOldLogs(dir, 7)
+	path := filepath.Join(dir, fmt.Sprintf("%s.log", day))
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return os.Stderr, err

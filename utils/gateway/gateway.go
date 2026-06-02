@@ -169,7 +169,7 @@ func DefaultOrgOptions(orgName, channel, ccName string) (Options, error) {
 	if orgName == "org2" {
 		orgDomain = "org2.example.com"
 		mspID = "Org2MSP"
-		peerPort = "localhost:9051"
+		peerPort = "localhost:19051"
 	}
 	base := filepath.Join(pathutil.Abs("./pkg/fabric/test-network/organizations/peerOrganizations"), orgDomain)
 	cert, key, err := loadAdminFromBase(base, orgDomain)

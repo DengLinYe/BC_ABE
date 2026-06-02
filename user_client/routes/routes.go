@@ -14,7 +14,7 @@ import (
 // NewEngine 创建并配置 Gin 引擎。
 func NewEngine(cfg config.Config) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(middleware.SafeRecovery())
 	r.Use(middleware.AccessLog())
 	r.Use(middleware.ErrorHandler())
 	Register(r, cfg)
@@ -42,7 +42,11 @@ func Register(r *gin.Engine, cfg config.Config) {
 		api.POST("/register", authCtrl.Register)
 		api.POST("/login", authCtrl.Login)
 		api.POST("/files/encrypt", fileCtrl.Encrypt)
+		api.POST("/files/update", fileCtrl.Update)
 		api.POST("/files/decrypt", fileCtrl.Decrypt)
+		api.POST("/files/delete", fileCtrl.Delete)
+		api.GET("/files", fileCtrl.List)
 		api.POST("/keys/request", keyCtrl.Request)
+		api.POST("/keys/auto", keyCtrl.AutoRequest)
 	}
 }

@@ -2,9 +2,7 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,7 +16,6 @@ import (
 	"bc_abe/utils/config"
 	"bc_abe/utils/db"
 	"bc_abe/utils/fabricdocker"
-	"bc_abe/utils/gateway"
 	"bc_abe/utils/logger"
 	"bc_abe/utils/pathutil"
 )
@@ -27,22 +24,14 @@ var log = logger.New("main")
 
 // Orchestrator 总端编排器。
 type Orchestrator struct {
-	cfg    config.Config
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	mu     sync.Mutex
+	cfg config.Config
+	wg  sync.WaitGroup
+	mu  sync.Mutex
 }
 
 func main() {
 	cfg := config.Load()
 	logger.Init(cfg.LogDir, cfg.LogLevel)
-	_ = os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755)
-	if _, err := db.Init(cfg.DBPath); err != nil {
-		apperr.ExitOn(log, err)
-	}
-	if err := db.SeedFabricUsers(cfg); err != nil {
-		log.Warn("fabric user seed skipped: %v", err)
-	}
 
 	orch := &Orchestrator{cfg: cfg}
 	log.Info("project root: %s", cfg.ProjectRoot)
@@ -68,32 +57,24 @@ func runMenu(orch *Orchestrator) {
 		choice := strings.TrimSpace(line)
 		switch choice {
 		case "1":
-			if err := orch.StartContainers(); err != nil {
-				log.Error("启动容器失败: %v", err)
+			if err := orch.FullClean(); err != nil {
+				log.Error("清理失败: %v", err)
 			}
 		case "2":
-			if err := orch.StopContainers(); err != nil {
-				log.Error("停止容器失败: %v", err)
-			}
-		case "3":
 			if err := orch.DeployNetwork(true); err != nil {
 				log.Error("部署网络失败: %v", err)
 			}
+		case "3":
+			if err := orch.PauseNetwork(); err != nil {
+				log.Error("暂停失败: %v", err)
+			}
 		case "4":
-			if err := orch.StopNetwork(); err != nil {
-				log.Error("清理网络失败: %v", err)
+			if err := orch.ResumeNetwork(); err != nil {
+				log.Error("恢复失败: %v", err)
 			}
 		case "5":
 			if err := orch.DeployChaincode(); err != nil {
 				log.Error("部署链码失败: %v", err)
-			}
-		case "6":
-			if err := orch.RunAll(); err != nil {
-				log.Error("运行服务失败: %v", err)
-			}
-		case "7":
-			if err := orch.InitializeOrganizations(); err != nil {
-				log.Error("初始化组织失败: %v", err)
 			}
 		case "0", "q", "Q":
 			orch.Shutdown()
@@ -105,14 +86,12 @@ func runMenu(orch *Orchestrator) {
 }
 
 func printMenu() {
-	fmt.Println("\n========== BC ABE 总控台 ==========")
-	fmt.Println(" 1) 启动区块链容器 (docker start)")
-	fmt.Println(" 2) 停止区块链容器 (docker stop)")
-	fmt.Println(" 3) 部署区块链 (network.sh up + 链码)")
-	fmt.Println(" 4) 清理区块链 (down + 容器清理 + 证书目录 wipe)")
+	fmt.Println("\n========== BC ABE 区块链控制台 ==========")
+	fmt.Println(" 1) 清理区块链与衍生数据 (完整回到 0 状态)")
+	fmt.Println(" 2) 部署区块链 (network.sh up + 链码)")
+	fmt.Println(" 3) 暂停区块链 (保留账本/证书/数据库)")
+	fmt.Println(" 4) 恢复区块链 (从暂停状态 docker start)")
 	fmt.Println(" 5) 部署链码 (CCAAS，推荐 WSL2)")
-	fmt.Println(" 6) 启动组织管理端 + 用户客户端")
-	fmt.Println(" 7) 初始化组织 ABE 参数并同步上链")
 	fmt.Println(" 0) 退出")
 	fmt.Println("===================================")
 }
@@ -128,12 +107,62 @@ func (o *Orchestrator) StartContainers() error {
 	return nil
 }
 
+// PauseNetwork 停止 Fabric 容器但保留证书、账本卷、数据库和本地文件。
+func (o *Orchestrator) PauseNetwork() error {
+	log.Info("pausing fabric containers (persistent data kept)")
+	return o.StopContainers()
+}
+
+// ResumeNetwork 从暂停状态恢复 Fabric 容器。
+func (o *Orchestrator) ResumeNetwork() error {
+	log.Info("resuming fabric containers from paused state")
+	if err := o.StartContainers(); err != nil {
+		return err
+	}
+	if err := fabricdocker.VerifyCoreContainersRunning(); err != nil {
+		return err
+	}
+	if err := fabricdocker.EnsureCCAASContainers(o.cfg); err != nil {
+		log.Warn("ccaas containers: %v (re-run chaincode deploy if file/query APIs fail)", err)
+	}
+	return nil
+}
+
 func (o *Orchestrator) StopContainers() error {
 	for _, name := range o.cfg.FabricContainers {
 		if err := o.docker("stop", name); err != nil {
 			log.Warn("stop %s: %v", name, err)
 		} else {
 			log.Info("container stopped: %s", name)
+		}
+	}
+	return nil
+}
+
+// FullClean 清理 Fabric 容器、网络产物、账本卷以及本系统衍生数据，回到 0 状态。
+func (o *Orchestrator) FullClean() error {
+	log.Info("full cleanup: fabric containers, artifacts, ledger volumes, local data")
+	if err := o.StopNetwork(); err != nil {
+		return err
+	}
+	if err := fabricdocker.CleanupVolumes(); err != nil {
+		log.Warn("cleanup docker volumes: %v", err)
+	}
+	for _, rel := range []string{
+		"files",
+		"db",
+		"fabric-ca-registrar",
+	} {
+		p := filepath.Join(o.cfg.DataDir, rel)
+		if err := os.RemoveAll(p); err != nil {
+			return apperr.Wrap(apperr.ErrFabricNetwork, "remove data/"+rel, err)
+		}
+		log.Info("removed data path: %s", p)
+	}
+	for _, rel := range []string{"auth_admin/data", "user_client/data"} {
+		p := pathutil.Abs(rel)
+		if err := os.RemoveAll(p); err != nil {
+			return apperr.Wrap(apperr.ErrFabricNetwork, "remove "+rel, err)
 		}
 	}
 	return nil
@@ -173,8 +202,13 @@ func (o *Orchestrator) DeployNetwork(withCC bool) error {
 	if err := fabricdocker.VerifyCAContainersRunning(); err != nil {
 		log.Warn("post-deploy CA check: %v", err)
 	}
-	if err := db.SeedFabricUsers(o.cfg); err != nil {
-		log.Warn("fabric user seed after deploy: %v", err)
+	_ = os.MkdirAll(filepath.Dir(o.cfg.DBPath), 0o755)
+	if _, initErr := db.Init(o.cfg.DBPath); initErr == nil {
+		if seedErr := db.SeedFabricUsers(o.cfg); seedErr != nil {
+			log.Warn("fabric user seed after deploy: %v", seedErr)
+		}
+	} else {
+		log.Warn("db init for seed: %v", initErr)
 	}
 	if withCC {
 		return o.DeployChaincode()
@@ -209,110 +243,16 @@ func (o *Orchestrator) DeployChaincode() error {
 		return o.networkScript("deployCC", "-ccn", o.cfg.ChaincodeName, "-ccp", ccPath, "-ccl", "go")
 	}
 	log.Info("deploying chaincode via deployCCAAS (host docker build)")
-	return o.networkScript("deployCCAAS", "-ccn", o.cfg.ChaincodeName, "-ccp", ccPath)
-}
-
-func (o *Orchestrator) RunAll() error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if o.cancel != nil {
-		log.Warn("services already running")
-		return nil
+	if err := o.networkScript("deployCCAAS", "-ccn", o.cfg.ChaincodeName, "-ccp", ccPath); err != nil {
+		return err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	o.cancel = cancel
-
-	admins := []struct {
-		org  string
-		port int
-	}{
-		{"org1", o.cfg.AuthAdminOrg1Port},
-		{"org2", o.cfg.AuthAdminOrg2Port},
-	}
-	for _, admin := range admins {
-		o.wg.Add(1)
-		go func(org string, port int) {
-			defer o.wg.Done()
-			adminLog := logger.New("auth_admin/" + org)
-			adminLog.Info("starting on :%d", port)
-			cmd := exec.Command("go", "run", ".")
-			cmd.Dir = pathutil.Abs("./auth_admin")
-			cmd.Env = append(os.Environ(),
-				fmt.Sprintf("ORG_NAME=%s", org),
-				fmt.Sprintf("BC_ABE_ROOT=%s", o.cfg.ProjectRoot),
-			)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Start(); err != nil {
-				adminLog.Error("start failed: %v", err)
-				return
-			}
-			<-ctx.Done()
-			_ = cmd.Process.Signal(syscall.SIGTERM)
-			_ = cmd.Wait()
-		}(admin.org, admin.port)
-	}
-
-	o.wg.Add(1)
-	go func() {
-		defer o.wg.Done()
-		log.Info("starting user client on :%d", o.cfg.UserClientPort)
-		cmd := exec.Command("go", "run", ".")
-		cmd.Dir = pathutil.Abs("./user_client")
-		cmd.Env = append(os.Environ(), fmt.Sprintf("BC_ABE_ROOT=%s", o.cfg.ProjectRoot))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			log.Error("user client start failed: %v", err)
-			return
-		}
-		<-ctx.Done()
-		_ = cmd.Process.Signal(syscall.SIGTERM)
-		_ = cmd.Wait()
-	}()
-
-	opts, err := gateway.DefaultOrg1Options(o.cfg.ChannelName, o.cfg.ChaincodeName)
-	if err == nil {
-		if _, err := gateway.Init(opts); err != nil {
-			log.Warn("gateway init failed: %v", err)
-		}
-	}
-
-	log.Info("services started")
-	return nil
-}
-
-func (o *Orchestrator) InitializeOrganizations() error {
-	targets := []struct {
-		org  string
-		port int
-	}{
-		{"org1", o.cfg.AuthAdminOrg1Port},
-		{"org2", o.cfg.AuthAdminOrg2Port},
-	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	for _, t := range targets {
-		url := fmt.Sprintf("http://127.0.0.1:%d/api/v1/org/init", t.port)
-		resp, err := client.Post(url, "application/json", nil)
-		if err != nil {
-			return fmt.Errorf("init %s: %w", t.org, err)
-		}
-		_ = resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			return fmt.Errorf("init %s: http %d", t.org, resp.StatusCode)
-		}
-		log.Info("organization initialized: %s", t.org)
+	if err := fabricdocker.EnsureCCAASContainers(o.cfg); err != nil {
+		log.Warn("post-deploy ccaas check: %v", err)
 	}
 	return nil
 }
 
 func (o *Orchestrator) Shutdown() {
-	o.mu.Lock()
-	if o.cancel != nil {
-		o.cancel()
-		o.cancel = nil
-	}
-	o.mu.Unlock()
 	o.wg.Wait()
 	time.Sleep(500 * time.Millisecond)
 }

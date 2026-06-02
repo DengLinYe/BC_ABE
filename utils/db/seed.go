@@ -92,7 +92,16 @@ func seedOneFabricUser(cfg config.Config, spec fabricUserSpec) error {
 	var existing UserAccount
 	err = Get().Where("username = ?", dbUsername).First(&existing).Error
 	if err == nil {
-		seedLog.Info("fabric user already seeded: %s", dbUsername)
+		if certPEM != existing.CertPEM || keyPEM != existing.KeyPEM {
+			existing.CertPEM = certPEM
+			existing.KeyPEM = keyPEM
+			if saveErr := Get().Save(&existing).Error; saveErr != nil {
+				return apperr.Wrap(apperr.ErrDBConnect, "refresh fabric user cert", saveErr)
+			}
+			seedLog.Info("refreshed fabric user cert: %s", dbUsername)
+		} else {
+			seedLog.Info("fabric user already seeded: %s", dbUsername)
+		}
 		return nil
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {

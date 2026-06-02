@@ -24,10 +24,24 @@ func (c *KeyController) Request(ctx *gin.Context) {
 		fail(ctx, http.StatusBadRequest, err)
 		return
 	}
-	count, err := c.svc.RequestKey(req.UserID, req.Attribute)
+	result, err := c.svc.RequestKey(req.UserID, req.Attribute)
 	if err != nil {
 		fail(ctx, httpStatus(err), err)
 		return
 	}
-	ok(ctx, gin.H{"attribute": req.Attribute, "keys": count})
+	ok(ctx, result)
+}
+
+func (c *KeyController) AutoRequest(ctx *gin.Context) {
+	var req dto.AutoKeyRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		fail(ctx, http.StatusBadRequest, err)
+		return
+	}
+	results, err := c.svc.RequestAutoKeys(req.UserID, req.Location, req.AtTime, req.Hour, req.HourOp)
+	if err != nil {
+		fail(ctx, httpStatus(err), err)
+		return
+	}
+	ok(ctx, gin.H{"issued": results})
 }

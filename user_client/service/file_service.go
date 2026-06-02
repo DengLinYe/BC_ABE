@@ -36,6 +36,18 @@ type EncryptResult struct {
 }
 
 func (s *FileService) Encrypt(userID uint, filename, content, policy string) (*EncryptResult, error) {
+	assetID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), safeFilename(filename))
+	return s.putEncrypted(userID, assetID, content, policy, "")
+}
+
+func (s *FileService) Update(userID uint, assetID, content, policy string) (*EncryptResult, error) {
+	if strings.TrimSpace(assetID) == "" {
+		return nil, apperr.ErrInvalidInput
+	}
+	return s.putEncrypted(userID, assetID, content, policy, assetID)
+}
+
+func (s *FileService) putEncrypted(userID uint, assetID, content, policy, existingAssetID string) (*EncryptResult, error) {
 	authSvc := NewAuthService()
 	user, err := authSvc.GetUser(userID)
 	if err != nil {
@@ -68,7 +80,11 @@ func (s *FileService) Encrypt(userID uint, filename, content, policy string) (*E
 	if err != nil {
 		return nil, err
 	}
+	policy = abeengine.NormalizePolicySyntax(policy)
 	authpubs := s.engine.AuthPubsOfPolicy(policy)
+	if len(authpubs.AuthPub) == 0 {
+		return nil, fmt.Errorf("invalid policy syntax (check location/time format)")
+	}
 	for name := range authpubs.AuthPub {
 		authPubJSON, ok := pubKeys[name]
 		if !ok || authPubJSON == "" {
@@ -86,12 +102,19 @@ func (s *FileService) Encrypt(userID uint, filename, content, policy string) (*E
 		return nil, err
 	}
 
-	assetID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), filename)
+	createdAt := time.Now().Format(time.RFC3339)
+	if existingAssetID != "" {
+		if existing, err := s.getAsset(existingAssetID); err == nil {
+			if v, _ := existing["createdAt"].(string); v != "" {
+				createdAt = v
+			}
+		}
+	}
 	asset := map[string]string{
 		"id": assetID, "policy": policy,
 		"ciphertext": abeengine.SerializeCiphertext(ct),
 		"owner":      fmt.Sprintf("%d", userID),
-		"createdAt":  time.Now().Format(time.RFC3339),
+		"createdAt":  createdAt,
 		"updatedAt":  time.Now().Format(time.RFC3339),
 	}
 	payload, _ := json.Marshal(asset)
@@ -106,6 +129,85 @@ func (s *FileService) Encrypt(userID uint, filename, content, policy string) (*E
 		return nil, err
 	}
 	return &EncryptResult{AssetID: assetID, Policy: policy}, nil
+}
+
+type AssetSummary struct {
+	AssetID   string `json:"assetId"`
+	Owner     string `json:"owner"`
+	Policy    string `json:"policy"`
+	Version   int    `json:"version"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func (s *FileService) List(userID uint, ownedOnly bool) ([]AssetSummary, error) {
+	gw := gateway.Get()
+	if gw == nil {
+		return nil, apperr.ErrGatewayConnect
+	}
+	raw, err := gw.Contract().EvaluateTransaction("ListCiphertextIDs")
+	if err != nil {
+		return nil, apperr.Wrap(apperr.ErrFabricNetwork, "list ciphertext ids", err)
+	}
+	var ids []string
+	if err := json.Unmarshal(raw, &ids); err != nil {
+		return nil, apperr.Wrap(apperr.ErrInvalidInput, "decode ciphertext ids", err)
+	}
+	owner := fmt.Sprintf("%d", userID)
+	out := make([]AssetSummary, 0, len(ids))
+	for _, id := range ids {
+		asset, err := s.getAsset(id)
+		if err != nil {
+			continue
+		}
+		if ownedOnly && fmt.Sprint(asset["owner"]) != owner {
+			continue
+		}
+		out = append(out, AssetSummary{
+			AssetID:   id,
+			Owner:     fmt.Sprint(asset["owner"]),
+			Policy:    fmt.Sprint(asset["policy"]),
+			Version:   intFromAny(asset["version"]),
+			CreatedAt: fmt.Sprint(asset["createdAt"]),
+			UpdatedAt: fmt.Sprint(asset["updatedAt"]),
+		})
+	}
+	return out, nil
+}
+
+func (s *FileService) Delete(userID uint, assetID string) error {
+	asset, err := s.getAsset(assetID)
+	if err != nil {
+		return err
+	}
+	if fmt.Sprint(asset["owner"]) != fmt.Sprintf("%d", userID) {
+		return apperr.ErrUnauthorized
+	}
+	gw := gateway.Get()
+	if gw == nil {
+		return apperr.ErrGatewayConnect
+	}
+	if _, err := gw.Contract().SubmitTransaction("DeleteCiphertext", assetID); err != nil {
+		return apperr.Wrap(apperr.ErrFabricNetwork, "delete ciphertext", err)
+	}
+	_ = os.Remove(filepath.Join(s.cfg.DataDir, "files", assetID+".bin"))
+	return nil
+}
+
+func (s *FileService) getAsset(assetID string) (map[string]any, error) {
+	gw := gateway.Get()
+	if gw == nil {
+		return nil, apperr.ErrGatewayConnect
+	}
+	raw, err := gw.Contract().EvaluateTransaction("GetCiphertext", assetID)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.ErrFabricNetwork, "get ciphertext", err)
+	}
+	var asset map[string]any
+	if err := json.Unmarshal(raw, &asset); err != nil {
+		return nil, apperr.Wrap(apperr.ErrInvalidInput, "decode ciphertext asset", err)
+	}
+	return asset, nil
 }
 
 func (s *FileService) fetchOrgPubKeys(gw *gateway.Gateway) (map[string]string, error) {
@@ -171,7 +273,7 @@ func (s *FileService) Decrypt(userID uint, assetID string) (*DecryptResult, erro
 	userattrs := NewKeyService(s.cfg, s.engine).MergeUserKeys(user.ID, user.Username, policy)
 	secret, err := s.engine.Decrypt(ct, userattrs)
 	if err != nil {
-		return nil, apperr.Wrap(apperr.ErrUnauthorized, "abe decrypt", err)
+		return nil, apperr.ErrUnauthorized
 	}
 
 	filePath := filepath.Join(s.cfg.DataDir, "files", assetID+".bin")
@@ -217,4 +319,28 @@ func aesDecrypt(key [32]byte, ciphertext []byte) ([]byte, error) {
 	}
 	nonce, body := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
 	return gcm.Open(nil, nonce, body, nil)
+}
+
+func safeFilename(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "demo.txt"
+	}
+	filename = strings.ReplaceAll(filename, "/", "_")
+	filename = strings.ReplaceAll(filename, "\\", "_")
+	return filename
+}
+
+func intFromAny(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return int(i)
+	default:
+		return 0
+	}
 }

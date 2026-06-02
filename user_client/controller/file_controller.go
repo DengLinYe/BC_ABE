@@ -32,6 +32,55 @@ func (c *FileController) Encrypt(ctx *gin.Context) {
 	ok(ctx, result)
 }
 
+func (c *FileController) Update(ctx *gin.Context) {
+	var req struct {
+		UserID  uint   `json:"userId" binding:"required"`
+		AssetID string `json:"assetId" binding:"required"`
+		Content string `json:"content" binding:"required"`
+		Policy  string `json:"policy" binding:"required"`
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		fail(ctx, http.StatusBadRequest, err)
+		return
+	}
+	result, err := c.svc.Update(req.UserID, req.AssetID, req.Content, req.Policy)
+	if err != nil {
+		fail(ctx, httpStatus(err), err)
+		return
+	}
+	ok(ctx, result)
+}
+
+func (c *FileController) List(ctx *gin.Context) {
+	var req struct {
+		UserID    uint `form:"userId" binding:"required"`
+		OwnedOnly bool `form:"ownedOnly"`
+	}
+	if err := ctx.ShouldBindQuery(&req); err != nil {
+		fail(ctx, http.StatusBadRequest, err)
+		return
+	}
+	files, err := c.svc.List(req.UserID, req.OwnedOnly)
+	if err != nil {
+		fail(ctx, httpStatus(err), err)
+		return
+	}
+	ok(ctx, files)
+}
+
+func (c *FileController) Delete(ctx *gin.Context) {
+	var req dto.DeleteFileRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		fail(ctx, http.StatusBadRequest, err)
+		return
+	}
+	if err := c.svc.Delete(req.UserID, req.AssetID); err != nil {
+		fail(ctx, httpStatus(err), err)
+		return
+	}
+	ok(ctx, gin.H{"deleted": req.AssetID})
+}
+
 func (c *FileController) Decrypt(ctx *gin.Context) {
 	var req dto.DecryptRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {

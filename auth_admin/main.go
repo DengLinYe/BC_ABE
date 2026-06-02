@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	abeengine "bc_abe/abe"
@@ -58,7 +60,11 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", port)
 	log.Info("auth admin for %s listening on %s", orgName, addr)
-	if err := http.ListenAndServe(addr, s.handler()); err != nil {
+	srv := &http.Server{Addr: addr, Handler: s.handler()}
+	errCh := make(chan error, 1)
+	go func() { errCh <- srv.ListenAndServe() }()
+	log.Info("http api started; use this console for org operations")
+	if err := s.runConsole(errCh, srv); err != nil {
 		apperr.ExitOn(log, apperr.Wrap(apperr.ErrInvalidInput, "http server", err))
 	}
 }
@@ -86,11 +92,9 @@ func (s *Server) loadAdminIdentity() (certPEM, keyPEM string) {
 }
 
 func (s *Server) loadCACert() string {
-	orgDomain := s.orgDomain()
-	cacertsDir := filepath.Join(s.cfg.FabricNetworkDir, "organizations/peerOrganizations", orgDomain, "users/Admin@"+orgDomain+"/msp/cacerts")
-	cert, err := msp.LoadCACertFromMSP(cacertsDir)
+	cert, err := msp.LoadOrgCACertPEM(s.cfg.FabricNetworkDir, s.orgName)
 	if err != nil {
-		log.Warn("load ca cert failed: %v", err)
+		log.Warn("load org ca cert failed: %v", err)
 		return ""
 	}
 	return cert
@@ -124,12 +128,58 @@ func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/v1/org/init", s.handleInitOrg)
+	mux.HandleFunc("/api/v1/global-params", s.handleGlobalParams)
 	mux.HandleFunc("/api/v1/key/issue", s.handleIssueKey)
 	return mux
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "org": s.orgName, "authName": s.authName})
+}
+
+func (s *Server) runConsole(errCh <-chan error, srv *http.Server) error {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Printf("\n========== auth_admin %s ==========\n", s.orgName)
+		fmt.Println(" 1) 初始化/同步本组织 ABE 参数")
+		fmt.Println(" 2) 查询链上 GlobalParams")
+		fmt.Println(" 0) 退出")
+		fmt.Println("===================================")
+		fmt.Print("请选择: ")
+
+		select {
+		case err := <-errCh:
+			if err == http.ErrServerClosed {
+				return nil
+			}
+			return err
+		default:
+		}
+
+		line, _ := reader.ReadString('\n')
+		switch strings.TrimSpace(line) {
+		case "1":
+			resp, err := s.initOrg()
+			if err != nil {
+				log.Error("初始化组织失败: %v", err)
+				continue
+			}
+			log.Info("organization initialized: org=%s auth=%s", resp.OrgName, resp.AuthName)
+		case "2":
+			params, err := s.globalParams()
+			if err != nil {
+				log.Error("查询 GlobalParams 失败: %v", err)
+				continue
+			}
+			b, _ := json.MarshalIndent(params, "", "  ")
+			fmt.Println(string(b))
+		case "0", "q", "Q":
+			_ = srv.Shutdown(context.Background())
+			return nil
+		default:
+			fmt.Println("无效选项")
+		}
+	}
 }
 
 type initOrgResp struct {
@@ -145,6 +195,15 @@ func (s *Server) handleInitOrg(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	resp, err := s.initOrg()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) initOrg() (initOrgResp, error) {
 	s.authName = config.AuthNameForOrg(s.orgName)
 
 	var existing db.Organization
@@ -155,29 +214,25 @@ func (s *Server) handleInitOrg(w http.ResponseWriter, r *http.Request) {
 		existing.AdminCertPEM, existing.AdminKeyPEM = s.loadAdminIdentity()
 		existing.CACertPEM = s.caCert
 		if err := db.Get().Save(&existing).Error; err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
+			return initOrgResp{}, err
 		}
 		_ = s.engine.LoadOrgFromJSON(existing.OrgJSON)
 		_ = s.engine.LoadAuthFromJSON(existing.AuthPubJSON, existing.AuthPrvJSON)
 		s.syncGlobalParamsToChain(existing)
-		writeJSON(w, http.StatusOK, initOrgResp{
+		return initOrgResp{
 			OrgName:     s.orgName,
 			AuthName:    existing.AuthName,
 			OrgJSON:     existing.OrgJSON,
 			AuthPubJSON: existing.AuthPubJSON,
 			CurveJSON:   existing.CurveJSON,
-		})
-		return
+		}, nil
 	}
 
 	if err := s.engine.InitOrg(); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
+		return initOrgResp{}, err
 	}
 	if err := s.engine.InitAuthority(); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
+		return initOrgResp{}, err
 	}
 
 	adminCert, adminKey := s.loadAdminIdentity()
@@ -196,10 +251,10 @@ func (s *Server) handleInitOrg(w http.ResponseWriter, r *http.Request) {
 	db.Get().Where("name = ?", s.orgName).Assign(record).FirstOrCreate(&record)
 	s.syncGlobalParamsToChain(record)
 
-	writeJSON(w, http.StatusOK, initOrgResp{
+	return initOrgResp{
 		OrgName: s.orgName, AuthName: s.authName, OrgJSON: record.OrgJSON,
 		AuthPubJSON: record.AuthPubJSON, CurveJSON: record.CurveJSON,
-	})
+	}, nil
 }
 
 func (s *Server) syncGlobalParamsToChain(org db.Organization) {
@@ -234,6 +289,40 @@ func (s *Server) syncGlobalParamsToChain(org db.Organization) {
 	if _, err := gw.Contract().SubmitTransaction("PutGlobalParams", string(payload)); err != nil {
 		log.Warn("sync global params failed: %v", err)
 	}
+}
+
+func (s *Server) handleGlobalParams(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	params, err := s.globalParams()
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, params)
+}
+
+func (s *Server) globalParams() (map[string]any, error) {
+	opts, err := gateway.DefaultOrgOptions(s.orgName, s.cfg.ChannelName, s.cfg.ChaincodeName)
+	if err != nil {
+		return nil, err
+	}
+	gw, err := gateway.New(opts)
+	if err != nil {
+		return nil, err
+	}
+	defer gw.Close()
+	raw, err := gw.Contract().EvaluateTransaction("GetGlobalParams")
+	if err != nil {
+		return nil, err
+	}
+	var params map[string]any
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return nil, err
+	}
+	return params, nil
 }
 
 type issueKeyReq struct {
@@ -283,9 +372,10 @@ func (s *Server) handleIssueKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verifyUser(req issueKeyReq) error {
-	if s.caCert != "" {
-		if err := msp.VerifyCertByCA(req.CertPEM, s.caCert); err != nil {
-			return err
+	caCert := s.loadCACert()
+	if caCert != "" {
+		if err := msp.VerifyCertByCA(req.CertPEM, caCert); err != nil {
+			return fmt.Errorf("用户证书与当前 Fabric CA 不一致（网络重建后请重新注册或重新登录同步证书）: %w", err)
 		}
 	}
 	if err := verifyRequestHash(req.User, req.Attribute, req.BodyHash); err != nil {
