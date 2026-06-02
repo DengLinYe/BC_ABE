@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BC ABE 用户客户端</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #fff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --muted: #64748b;
+      --primary: #2563eb;
+      --danger: #dc2626;
+      --success: #059669;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 2rem 1rem 3rem;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; }
+    h1 { margin: 0 0 0.25rem; font-size: 1.75rem; }
+    .subtitle { color: var(--muted); margin-bottom: 1.25rem; }
+    .alert {
+      display: none;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .alert.show { display: block; }
+    .alert.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .alert.success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.2rem;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    section h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 0.55rem 0 0.25rem; }
+    input, textarea, select, button {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font: inherit;
+    }
+    textarea { resize: vertical; min-height: 88px; }
+    .row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    .row button { flex: 1; cursor: pointer; }
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      font-weight: 600;
+    }
+    button.secondary { background: #475569; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .user-bar {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      margin-bottom: 1rem;
+      font-size: 0.92rem;
+    }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 1rem;
+      border-radius: 10px;
+      overflow: auto;
+      font-size: 0.85rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ABE + Fabric 用户客户端</h1>
+    <p class="subtitle">注册登录、文件加密上链、属性密钥申请与解密</p>
+
+    <div id="alert" class="alert" role="alert"></div>
+    <div id="userBar" class="user-bar" style="display:none"></div>
+
+    <div class="grid">
+      <section>
+        <h2>注册 / 登录</h2>
+        <label for="username">用户名</label>
+        <input id="username" placeholder="新用户注册名" />
+        <label for="password">密码</label>
+        <input id="password" type="password" placeholder="密码" />
+        <label for="orgName">组织</label>
+        <select id="orgName">
+          <option value="org1">org1</option>
+          <option value="org2">org2</option>
+        </select>
+        <label for="attributes">属性（逗号分隔，如 member,admin）</label>
+        <input id="attributes" placeholder="member" />
+        <div class="row">
+          <button onclick="register()">注册</button>
+          <button class="secondary" onclick="login()">登录</button>
+        </div>
+        <p style="font-size:0.82rem;color:var(--muted);margin:0.75rem 0 0">
+          预置账号：admin@org1 / org1adminpw，user1@org1 / user1pw
+        </p>
+      </section>
+
+      <section>
+        <h2>文件加密</h2>
+        <label for="content">明文内容</label>
+        <textarea id="content" placeholder="待加密文本"></textarea>
+        <label for="policy">访问策略</label>
+        <input id="policy" placeholder="member@auth0" />
+        <button onclick="encryptFile()">加密并上链</button>
+      </section>
+
+      <section>
+        <h2>密钥 / 解密</h2>
+        <label for="attribute">申请属性</label>
+        <input id="attribute" placeholder="member@auth0" />
+        <button onclick="requestKey()">申请 ABE 密钥</button>
+        <label for="assetId">密文资产 ID</label>
+        <input id="assetId" placeholder="加密返回的 assetId" />
+        <button onclick="decryptFile()">解密文件</button>
+      </section>
+    </div>
+
+    <pre id="output">等待操作…</pre>
+  </div>
+
+  <script>
+    let currentUser = null;
+    const $ = (id) => document.getElementById(id);
+
+    function showAlert(type, message) {
+      const el = $('alert');
+      el.className = 'alert show ' + type;
+      el.textContent = message;
+    }
+
+    function clearAlert() {
+      $('alert').className = 'alert';
+      $('alert').textContent = '';
+    }
+
+    function renderUser() {
+      const bar = $('userBar');
+      if (!currentUser) {
+        bar.style.display = 'none';
+        return;
+      }
+      bar.style.display = 'block';
+      bar.textContent = `当前用户：${currentUser.username}（${currentUser.orgName || ''}，id=${currentUser.id}）`;
+    }
+
+    function out(v) {
+      $('output').textContent = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+    }
+
+    async function api(path, body) {
+      clearAlert();
+      let res;
+      try {
+        res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (e) {
+        showAlert('error', '网络请求失败：' + e.message);
+        throw e;
+      }
+      let json;
+      try {
+        json = await res.json();
+      } catch (e) {
+        showAlert('error', `HTTP ${res.status}：响应不是 JSON`);
+        throw new Error('invalid json');
+      }
+      if (!res.ok || json.code !== 0) {
+        const msg = json.message || `HTTP ${res.status}`;
+        showAlert('error', msg);
+        out(json);
+        throw new Error(msg);
+      }
+      showAlert('success', '操作成功');
+      out(json.data ?? json);
+      return json;
+    }
+
+    async function register() {
+      if (!$('username').value || !$('password').value) {
+        return showAlert('error', '请填写用户名和密码');
+      }
+      try {
+        const json = await api('/api/v1/register', {
+          username: $('username').value,
+          password: $('password').value,
+          orgName: $('orgName').value,
+          attributes: $('attributes').value,
+        });
+        currentUser = json.data;
+        renderUser();
+      } catch (_) {}
+    }
+
+    async function login() {
+      if (!$('username').value || !$('password').value) {
+        return showAlert('error', '请填写用户名和密码');
+      }
+      try {
+        const json = await api('/api/v1/login', {
+          username: $('username').value,
+          password: $('password').value,
+        });
+        currentUser = json.data;
+        renderUser();
+      } catch (_) {}
+    }
+
+    async function encryptFile() {
+      if (!currentUser) return showAlert('error', '请先登录');
+      try {
+        const json = await api('/api/v1/files/encrypt', {
+          userId: currentUser.id,
+          filename: 'demo.txt',
+          content: $('content').value,
+          policy: $('policy').value,
+        });
+        if (json.data && json.data.assetId) $('assetId').value = json.data.assetId;
+      } catch (_) {}
+    }
+
+    async function requestKey() {
+      if (!currentUser) return showAlert('error', '请先登录');
+      try {
+        await api('/api/v1/keys/request', {
+          userId: currentUser.id,
+          attribute: $('attribute').value,
+        });
+      } catch (_) {}
+    }
+
+    async function decryptFile() {
+      if (!currentUser) return showAlert('error', '请先登录');
+      try {
+        await api('/api/v1/files/decrypt', {
+          userId: currentUser.id,
+          assetId: $('assetId').value,
+        });
+      } catch (_) {}
+    }
+  </script>
+</body>
+</html>
