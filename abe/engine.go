@@ -1,10 +1,10 @@
 package abe
 
 import (
+	"crypto/sha256"
 	"fmt"
-	"regexp"
-	"strings"
 
+	"bc_abe/utils/apperr"
 	mosaic "bc_abe/pkg/mosaic/abe"
 )
 
@@ -14,23 +14,6 @@ type (
 	Userkey    = mosaic.Userkey
 	Ciphertext = mosaic.Ciphertext
 )
-
-var (
-	reHourSingleEq  = regexp.MustCompile(`(?i)(hour@[a-zA-Z0-9_]+)\s*=\s*(\d+)`)
-	rePolicyAnd     = regexp.MustCompile(`(?i)\s+and\s+`)
-	rePolicyOr      = regexp.MustCompile(`(?i)\s+or\s+`)
-	reLocUnderscore = regexp.MustCompile(`(?i)loc_(school|home|others)@`)
-)
-
-// NormalizePolicySyntax 修正 UI/旧数据里不符合 ABE 语法的片段。
-func NormalizePolicySyntax(policy string) string {
-	p := strings.TrimSpace(policy)
-	p = reHourSingleEq.ReplaceAllString(p, "${1} == ${2}")
-	p = rePolicyAnd.ReplaceAllString(p, " /\\ ")
-	p = rePolicyOr.ReplaceAllString(p, " \\/ ")
-	p = reLocUnderscore.ReplaceAllString(p, "loc$1@")
-	return strings.TrimSpace(p)
-}
 
 // Engine 封装 mosaic ABE 核心能力。
 type Engine struct {
@@ -142,17 +125,34 @@ func (e *Engine) NewSecret() (mosaic.Point, error) {
 }
 
 // Encrypt 按策略加密秘密。
-func (e *Engine) Encrypt(secret mosaic.Point, policy string, authpubs *mosaic.AuthPubs) (*mosaic.Ciphertext, error) {
+func (e *Engine) Encrypt(secret mosaic.Point, policy string, authpubs *mosaic.AuthPubs) (ct *mosaic.Ciphertext, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = apperr.Wrap(apperr.ErrInvalidPolicy, "encrypt", fmt.Errorf("%v", r))
+			ct = nil
+		}
+	}()
+	if secret == nil {
+		return nil, apperr.ErrInvalidPolicy
+	}
 	policy = NormalizePolicySyntax(policy)
+	if err := mosaic.ValidateAccessPolicy(policy); err != nil {
+		return nil, apperr.Wrap(apperr.ErrInvalidPolicy, "validate", err)
+	}
 	if len(mosaic.AuthPubsOfPolicy(policy).AuthPub) == 0 {
-		return nil, ErrInvalidPolicy
+		return nil, apperr.ErrInvalidPolicy
 	}
 	if authpubs == nil || len(authpubs.AuthPub) == 0 {
-		return nil, fmt.Errorf("%w: missing authority keys", ErrInvalidPolicy)
+		return nil, apperr.Wrap(apperr.ErrInvalidPolicy, "encrypt", fmt.Errorf("missing authority keys"))
 	}
 	org := mosaic.GetOrgFromAuthPubs(authpubs)
 	if org == nil || org.Crv == nil {
-		return nil, fmt.Errorf("%w: authority org not loaded", ErrInvalidPolicy)
+		return nil, apperr.Wrap(apperr.ErrInvalidPolicy, "encrypt", fmt.Errorf("authority org not loaded"))
+	}
+	for name, pub := range authpubs.AuthPub {
+		if pub == nil || pub.Org == nil || pub.Org.Crv == nil {
+			return nil, apperr.Wrap(apperr.ErrInvalidPolicy, "encrypt", fmt.Errorf("incomplete authority public key %s", name))
+		}
 	}
 	return mosaic.Encrypt(secret, policy, authpubs), nil
 }
@@ -162,9 +162,15 @@ func (e *Engine) Decrypt(ct *mosaic.Ciphertext, userattrs *mosaic.UserAttrs) (mo
 	if ct == nil || userattrs == nil {
 		return nil, ErrDecryptInput
 	}
-	userattrs.SelectUserAttrs(userattrs.User, NormalizePolicySyntax(ct.Policy))
+	NormalizeCiphertext(ct)
+	NormalizeUserAttrs(userattrs)
+	policy := NormalizePolicySyntax(ct.Policy)
+	if missing := PolicyMissingUserKeys(policy, userattrs); len(missing) > 0 {
+		return nil, fmt.Errorf("缺少 %d 个策略属性密钥", len(missing))
+	}
+	userattrs.SelectUserAttrs(userattrs.User, policy)
 	if err := validateDecryptInputs(ct, userattrs); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("密文与用户密钥不匹配: %w", err)
 	}
 	return mosaic.Decrypt(ct, userattrs), nil
 }
@@ -182,6 +188,31 @@ func validateDecryptInputs(ct *mosaic.Ciphertext, userattrs *mosaic.UserAttrs) e
 		}
 	}
 	return nil
+}
+
+// FillAuthPubsFromChain 从链上公钥表填充策略所需 authority，并返回共用的 ABE 群参数 JSON。
+func FillAuthPubsFromChain(authpubs *mosaic.AuthPubs, pubKeys map[string]string) (sharedOrgJSON string, err error) {
+	if authpubs == nil || len(authpubs.AuthPub) == 0 {
+		return "", fmt.Errorf("policy references no authorities")
+	}
+	for name := range authpubs.AuthPub {
+		authPubJSON, ok := pubKeys[name]
+		if !ok || authPubJSON == "" {
+			return "", fmt.Errorf("authority public key not found on chain: %s", name)
+		}
+		authPub := ParseAuthPub(authPubJSON)
+		if authPub == nil || authPub.Org == nil {
+			return "", fmt.Errorf("incomplete authority public key %s", name)
+		}
+		orgJSON := SerializeOrg(authPub.Org)
+		if sharedOrgJSON == "" {
+			sharedOrgJSON = orgJSON
+		} else if orgJSON != sharedOrgJSON {
+			return "", fmt.Errorf("authorities in policy use incompatible ABE group parameters (%s)", name)
+		}
+		authpubs.AuthPub[name] = authPub
+	}
+	return sharedOrgJSON, nil
 }
 
 // AuthPubsOfPolicy 从策略提取所需 authority 公钥槽位。
@@ -203,6 +234,22 @@ func (e *Engine) FillAuthPub(authpubs *mosaic.AuthPubs, authName string) {
 // SecretHash 计算 secret 哈希。
 func (e *Engine) SecretHash(secret mosaic.Point) string {
 	return mosaic.SecretHash(secret)
+}
+
+// SymKeyFromSecret 从 ABE 秘密派生 AES-256 密钥。
+func SymKeyFromSecret(secret mosaic.Point) ([32]byte, error) {
+	if secret == nil {
+		return [32]byte{}, fmt.Errorf("nil abe secret")
+	}
+	jo := secret.ToJsonObj()
+	if jo == nil {
+		return [32]byte{}, fmt.Errorf("invalid abe secret")
+	}
+	p := jo.GetP()
+	if p == "" {
+		return [32]byte{}, fmt.Errorf("empty abe secret encoding")
+	}
+	return sha256.Sum256([]byte(p)), nil
 }
 
 // LoadOrgFromJSON 从 JSON 恢复组织。

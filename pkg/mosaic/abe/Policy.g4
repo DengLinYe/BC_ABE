@@ -9,9 +9,9 @@ policy:
 ;
 
 expr:
-    expr op=(TK_AND|TK_OR) expr # expr_andor
+    expr op=(TK_EQ|TK_LT|TK_LTEQ|TK_GT|TK_GTEQ) expr # expr_linear
   | TK_LPAREN expr TK_RPAREN # expr_paren
-  | expr op=(TK_EQ|TK_LT|TK_LTEQ|TK_GT|TK_GTEQ) expr # expr_linear
+  | expr op=(TK_AND|TK_OR) expr # expr_andor
   | attr # expr_attr
   | value # expr_value
 ;

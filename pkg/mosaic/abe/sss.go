@@ -76,6 +76,43 @@ func computeShares(s []*big.Int, ap [][]int) []*big.Int {
 }
 
 func computeCoefficients(ap [][]int) []int {
+	if c := computeCoefficientsHNF(ap); linCombMatches(c, ap) {
+		return c
+	}
+	if c, ok := computeCoefficientsSolve(ap); ok {
+		return c
+	}
+	return computeCoefficientsHNF(ap)
+}
+
+func linCombMatches(c []int, ap [][]int) bool {
+	if len(ap) == 0 {
+		return false
+	}
+	m := len(ap[0])
+	sum := make([]int, m)
+	for i, row := range ap {
+		if i >= len(c) || c[i] == 0 {
+			continue
+		}
+		ci := c[i]
+		for j, v := range row {
+			sum[j] += ci * v
+		}
+	}
+	for j, v := range sum {
+		want := 0
+		if j == 0 {
+			want = 1
+		}
+		if v != want {
+			return false
+		}
+	}
+	return true
+}
+
+func computeCoefficientsHNF(ap [][]int) []int {
 	hap, u := hermiteNormalForm(ap)
 	log.Debug("HNF %d", hap)
 	log.Debug("U %d", u)
@@ -102,6 +139,127 @@ func computeCoefficients(ap [][]int) []int {
 	}
 
 	return c
+}
+
+func computeCoefficientsSolve(ap [][]int) ([]int, bool) {
+	n := len(ap)
+	if n == 0 {
+		return nil, false
+	}
+	m := len(ap[0])
+	target := make([]int, m)
+	target[0] = 1
+
+	active := []int{}
+	for j := 0; j < m; j++ {
+		nz := target[j] != 0
+		if !nz {
+			for i := 0; i < n; i++ {
+				if ap[i][j] != 0 {
+					nz = true
+					break
+				}
+			}
+		}
+		if nz {
+			active = append(active, j)
+		}
+	}
+	k := len(active)
+	if k == 0 {
+		return nil, false
+	}
+
+	mat := make([][]*big.Rat, k)
+	for j := 0; j < k; j++ {
+		col := active[j]
+		mat[j] = make([]*big.Rat, n+1)
+		for i := 0; i < n; i++ {
+			mat[j][i] = big.NewRat(int64(ap[i][col]), 1)
+		}
+		mat[j][n] = big.NewRat(int64(target[col]), 1)
+	}
+
+	pivot := 0
+	usedCol := make([]bool, n)
+	for col := 0; col < n && pivot < k; col++ {
+		row := -1
+		for r := pivot; r < k; r++ {
+			if mat[r][col].Sign() != 0 {
+				row = r
+				break
+			}
+		}
+		if row < 0 {
+			continue
+		}
+		mat[pivot], mat[row] = mat[row], mat[pivot]
+		usedCol[col] = true
+		for r := 0; r < k; r++ {
+			if r == pivot || mat[r][col].Sign() == 0 {
+				continue
+			}
+			factor := new(big.Rat).Quo(mat[r][col], mat[pivot][col])
+			for c := col; c <= n; c++ {
+				term := new(big.Rat).Mul(factor, mat[pivot][c])
+				mat[r][c].Sub(mat[r][c], term)
+			}
+		}
+		pivot++
+	}
+
+	cRat := make([]*big.Rat, n)
+	for i := range cRat {
+		cRat[i] = new(big.Rat)
+	}
+	for r := pivot - 1; r >= 0; r-- {
+		pcol := -1
+		for c := n - 1; c >= 0; c-- {
+			if mat[r][c].Sign() != 0 {
+				pcol = c
+				break
+			}
+		}
+		if pcol < 0 {
+			continue
+		}
+		val := new(big.Rat).Set(mat[r][n])
+		for c := pcol + 1; c < n; c++ {
+			if cRat[c].Sign() != 0 {
+				term := new(big.Rat).Mul(mat[r][c], cRat[c])
+				val.Sub(val, term)
+			}
+		}
+		cRat[pcol].Quo(val, mat[r][pcol])
+	}
+
+	lcm := big.NewInt(1)
+	for i := 0; i < n; i++ {
+		if cRat[i].Sign() == 0 {
+			continue
+		}
+		lcm = lcmInt(lcm, cRat[i].Denom())
+	}
+	out := make([]int, n)
+	for i := 0; i < n; i++ {
+		if cRat[i].Sign() == 0 {
+			continue
+		}
+		scaled := new(big.Rat).Mul(cRat[i], big.NewRat(lcm.Int64(), 1))
+		if !scaled.IsInt() {
+			return nil, false
+		}
+		out[i] = int(scaled.Num().Int64())
+	}
+	if !linCombMatches(out, ap) {
+		return nil, false
+	}
+	return out, true
+}
+
+func lcmInt(a, b *big.Int) *big.Int {
+	g := new(big.Int).GCD(nil, nil, a, b)
+	return new(big.Int).Quo(new(big.Int).Mul(a, b), g)
 }
 
 func padWithZeros(x *[]int, tlen int) {

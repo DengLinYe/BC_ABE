@@ -1,13 +1,9 @@
 package controller
 
 import (
-	"errors"
-	"net/http"
-
-	abeengine "bc_abe/abe"
-	"bc_abe_uc/dto"
 	"bc_abe/utils/apperr"
 	"bc_abe/utils/logger"
+	"bc_abe_uc/dto"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,10 +11,15 @@ import (
 var ctrlLog = logger.New("controller")
 
 func ok(ctx *gin.Context, data any) {
-	ctx.JSON(http.StatusOK, dto.APIResponse{Code: 0, Data: data})
+	ctx.JSON(200, dto.APIResponse{Code: 0, Data: data})
 }
 
-func fail(ctx *gin.Context, code int, err error) {
+func bindFail(ctx *gin.Context, err error) {
+	fail(ctx, apperr.Wrap(apperr.ErrInvalidInput, "request", err))
+}
+
+func fail(ctx *gin.Context, err error) {
+	code := apperr.HTTPStatus(err)
 	path := ctx.FullPath()
 	if path == "" {
 		path = ctx.Request.URL.Path
@@ -26,29 +27,6 @@ func fail(ctx *gin.Context, code int, err error) {
 	ctrlLog.Error("%s %s -> %d: %v", ctx.Request.Method, path, code, err)
 	ctx.JSON(code, dto.APIResponse{
 		Code:    code,
-		Message: publicMessage(err),
+		Message: apperr.PublicMessage(err),
 	})
-}
-
-func publicMessage(err error) string {
-	if err == nil {
-		return "unknown error"
-	}
-	// 保留完整链路，便于开发阶段定位 fabric-ca / gateway 等问题
-	return err.Error()
-}
-
-func httpStatus(err error) int {
-	switch {
-	case errors.Is(err, apperr.ErrUnauthorized):
-		return http.StatusUnauthorized
-	case errors.Is(err, apperr.ErrNotFound):
-		return http.StatusNotFound
-	case errors.Is(err, apperr.ErrInvalidInput), errors.Is(err, abeengine.ErrInvalidPolicy):
-		return http.StatusBadRequest
-	case errors.Is(err, apperr.ErrFabricNetwork), errors.Is(err, apperr.ErrGatewayConnect):
-		return http.StatusBadGateway
-	default:
-		return http.StatusInternalServerError
-	}
 }

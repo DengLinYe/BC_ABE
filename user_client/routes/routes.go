@@ -14,8 +14,8 @@ import (
 // NewEngine 创建并配置 Gin 引擎。
 func NewEngine(cfg config.Config) *gin.Engine {
 	r := gin.New()
-	r.Use(middleware.SafeRecovery())
 	r.Use(middleware.AccessLog())
+	r.Use(middleware.SafeRecovery())
 	r.Use(middleware.ErrorHandler())
 	Register(r, cfg)
 	return r
@@ -48,5 +48,6 @@ func Register(r *gin.Engine, cfg config.Config) {
 		api.GET("/files", fileCtrl.List)
 		api.POST("/keys/request", keyCtrl.Request)
 		api.POST("/keys/auto", keyCtrl.AutoRequest)
+		api.GET("/keys", keyCtrl.List)
 	}
 }

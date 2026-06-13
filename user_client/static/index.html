@@ -12,6 +12,7 @@
       --muted: #64748b;
       --line: #dbe4ff;
       --primary: #4f46e5;
+      --primary-soft: #eef2ff;
       --danger: #dc2626;
       --ok: #059669;
       --shadow: 0 18px 45px rgba(79, 70, 229, 0.16);
@@ -56,7 +57,7 @@
       box-shadow: var(--shadow);
       text-align: left;
     }
-    main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 56px; }
+    main { max-width: min(1280px, 96vw); margin: 0 auto; padding: 32px 20px 56px; }
     .card {
       background: var(--card);
       border: 1px solid rgba(148, 163, 184, 0.25);
@@ -87,18 +88,31 @@
       border-radius: 999px;
       width: 44px;
       height: 44px;
-      display: inline-grid;
-      place-items: center;
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
       background: var(--primary);
       color: #fff;
       box-shadow: 0 10px 24px rgba(79, 70, 229, 0.25);
       font-size: 1.1rem;
+      padding: 0;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-    .icon.gray { background: #475569; }
-    .icon.red { background: var(--danger); }
-    .icon.green { background: var(--ok); }
-    .icon.big { width: 112px; height: 112px; font-size: 2.2rem; }
+    .icon:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(79, 70, 229, 0.3); }
+    .icon:active { transform: translateY(0); }
+    .icon:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+    .icon[data-icon="logout"] svg { transform: rotate(180deg); }
+    .icon.sm { width: 36px; height: 36px; min-width: 36px; min-height: 36px; box-shadow: 0 6px 16px rgba(79, 70, 229, 0.2); }
+    .icon.sm svg { width: 17px; height: 17px; stroke-width: 2.1; }
+    .icon.big { width: 112px; height: 112px; min-width: 112px; min-height: 112px; border-radius: 28px; }
+    .icon.big svg { width: 42px; height: 42px; stroke-width: 1.75; }
+    .icon.gray { background: #475569; box-shadow: 0 10px 24px rgba(71, 85, 105, 0.22); }
+    .icon.red { background: var(--danger); box-shadow: 0 10px 24px rgba(220, 38, 38, 0.22); }
+    .icon.green { background: var(--ok); box-shadow: 0 10px 24px rgba(5, 150, 105, 0.22); }
     .actions { display: flex; justify-content: center; align-items: center; gap: 42px; margin-bottom: 28px; }
     .chips { min-height: 50px; border: 1px dashed var(--line); border-radius: 18px; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; background: rgba(255,255,255,0.55); }
     .chip { display: inline-flex; gap: 8px; align-items: center; padding: 7px 10px; border-radius: 999px; background: #eef2ff; color: #312e81; font-size: 0.88rem; }
@@ -106,21 +120,86 @@
     .tabs { display: flex; gap: 8px; margin-bottom: 18px; }
     .tab { border: 0; padding: 10px 16px; border-radius: 999px; cursor: pointer; background: #e0e7ff; color: #312e81; }
     .tab.active { background: var(--primary); color: #fff; }
-    .table { width: 100%; border-collapse: collapse; overflow: hidden; }
-    .table th, .table td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 0.92rem; }
-    .table th { color: var(--muted); font-weight: 600; }
-    .modal { position: fixed; inset: 0; display: none; place-items: center; background: rgba(15, 23, 42, 0.35); z-index: 20; padding: 20px; }
-    .modal.show { display: grid; }
-    .dialog { width: min(720px, 100%); max-height: 90vh; overflow: auto; background: #fff; border-radius: 28px; padding: 24px; box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35); }
+    .table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .table th, .table td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.92rem;
+      vertical-align: middle;
+    }
+    .table th {
+      color: var(--muted);
+      font-weight: 600;
+      text-align: center;
+      white-space: nowrap;
+      background: rgba(238, 242, 255, 0.65);
+    }
+    .table td { text-align: left; }
+    .table .col-id { width: 26%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .table .col-policy { width: 30%; word-break: break-word; line-height: 1.45; font-size: 0.86rem; }
+    .table .col-version { width: 6%; text-align: center; white-space: nowrap; }
+    .table .col-time { width: 20%; font-size: 0.82rem; color: var(--muted); white-space: nowrap; }
+    .table .col-actions { width: 18%; text-align: center; padding-left: 6px; padding-right: 8px; }
+    .table-keys .col-policy { width: 40%; word-break: break-word; font-size: 0.86rem; }
+    .table-keys .col-version { width: 10%; }
+    .table-keys .col-count { width: 12%; text-align: center; }
+    .table-keys .col-time { width: 38%; font-size: 0.82rem; }
+    .cell-actions { display: inline-flex; gap: 5px; justify-content: center; align-items: center; flex-wrap: nowrap; }
+    .table-empty td { text-align: center; color: var(--muted); padding: 28px; }
+    .table-wrap { margin-top: 8px; border-radius: 16px; border: 1px solid var(--line); overflow: hidden; }
+    .scroll-y { overflow-x: hidden; overflow-y: auto; max-height: min(52vh, 420px); scrollbar-width: thin; scrollbar-color: rgba(79, 70, 229, 0.35) transparent; }
+    .scroll-modal { max-height: min(58vh, 480px); }
+    .scroll-y::-webkit-scrollbar { width: 7px; height: 7px; }
+    .scroll-y::-webkit-scrollbar-track { background: transparent; }
+    .scroll-y::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.22); border-radius: 999px; }
+    .scroll-y:hover::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.42); }
+    .dialog { width: min(960px, calc(100vw - 32px)); max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; background: #fff; border-radius: 28px; padding: 24px; box-shadow: 0 30px 80px rgba(15, 23, 42, 0.35); }
+    .dialog-body { overflow-x: hidden; overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: rgba(79, 70, 229, 0.35) transparent; }
+    .dialog-body::-webkit-scrollbar { width: 7px; }
+    .dialog-body::-webkit-scrollbar-thumb { background: rgba(79, 70, 229, 0.22); border-radius: 999px; }
     .dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
     .msg { white-space: pre-wrap; word-break: break-word; color: var(--muted); }
-    .policy-preview { background: #0f172a; color: #e2e8f0; border-radius: 18px; padding: 14px; min-height: 52px; overflow: auto; }
+    .form-hint { border-radius: 14px; padding: 10px 14px; font-size: 0.9rem; line-height: 1.45; }
+    .form-hint.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .form-hint.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .form-hint.hidden { display: none; }
+    .field-invalid { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12); }
+    .policy-preview { background: #0f172a; color: #e2e8f0; border-radius: 18px; padding: 14px; min-height: 52px; max-height: 160px; overflow: auto; line-height: 1.6; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.45) transparent; }
+    .policy-preview::-webkit-scrollbar { width: 6px; }
+    .policy-preview::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 999px; }
+    .policy-preview .policy-leaf { color: #e2e8f0; }
+    .policy-preview .policy-op { color: #93c5fd; margin: 0 4px; }
+    .policy-preview .policy-pending { color: #f87171; font-weight: 600; }
+    .policy-preview .policy-empty { color: #64748b; }
+    .icon.op-active { outline: 2px solid #f87171; outline-offset: 2px; }
     .spacer { flex: 1; }
+    .loading-overlay {
+      position: fixed; inset: 0; z-index: 40;
+      display: grid; place-items: center;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(4px);
+    }
+    .loading-card {
+      min-width: 280px; padding: 28px 32px; border-radius: 24px;
+      background: #fff; box-shadow: var(--shadow); text-align: center;
+    }
+    .spinner {
+      width: 44px; height: 44px; margin: 0 auto 16px;
+      border: 3px solid var(--primary-soft);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { margin: 0; color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
+    .loading-sub { margin: 8px 0 0; color: var(--text); font-weight: 600; font-size: 1rem; }
+    .modal { position: fixed; inset: 0; display: none; place-items: center; background: rgba(15, 23, 42, 0.35); z-index: 20; padding: 20px; }
+    .modal.show { display: grid; }
   </style>
 </head>
 <body>
   <header>
-    <button id="logoutBtn" class="icon gray hidden" title="退出登录" onclick="logout()">←</button>
+    <button id="logoutBtn" class="icon gray hidden" data-icon="logout" title="退出登录" onclick="logout()"></button>
     <div class="brand">BC-ABE</div>
     <div id="userInfo" class="user"></div>
   </header>
@@ -140,8 +219,9 @@
         <label>组织</label>
         <select id="loginOrg"><option>org1</option><option>org2</option></select>
         <div class="row" style="margin-top:18px;justify-content:flex-end">
-          <button class="icon green" title="登录" onclick="login()">✓</button>
+          <button class="icon green" data-icon="check" title="登录" onclick="login()"></button>
         </div>
+        <div id="loginHint" class="form-hint hidden"></div>
       </div>
 
       <div id="registerPane" class="hidden">
@@ -157,31 +237,35 @@
           <input id="attrName" placeholder="属性名，如 role 或 score" />
           <span>=</span>
           <input id="attrValue" placeholder="数值，可空" />
-          <button class="icon" title="添加属性" onclick="addRegisterAttr()">+</button>
+          <button class="icon" title="添加属性" onclick="addRegisterAttr()"></button>
         </div>
         <div class="row" style="margin-top:18px;justify-content:flex-end">
-          <button class="icon green" title="注册" onclick="register()">✓</button>
+          <button class="icon green" data-icon="check" title="注册" onclick="register()"></button>
         </div>
+        <div id="registerHint" class="form-hint hidden"></div>
       </div>
     </section>
 
     <section id="mainPage" class="hidden">
       <div class="actions">
-        <button class="icon big" title="上传" onclick="openUpload()">↑</button>
-        <button class="icon big green" title="密钥申请" onclick="openKeyDialog()">⚿</button>
-        <button class="icon big gray" title="下载" onclick="openDownload()">↓</button>
+        <button class="icon big" data-icon="upload" title="上传" onclick="openUpload()"></button>
+        <button class="icon big green" data-icon="key" title="密钥申请" onclick="openKeyDialog()"></button>
+        <button class="icon big gray" data-icon="keys" title="我的密钥" onclick="openMyKeysDialog()"></button>
+        <button class="icon big gray" data-icon="download" title="下载" onclick="openDownload()"></button>
       </div>
 
       <section class="card">
         <div class="row">
           <h2 style="margin:0">我的文件</h2>
           <div class="spacer"></div>
-          <button class="icon gray" title="刷新" onclick="loadFiles(true)">↻</button>
+          <button class="icon gray" data-icon="refresh" title="刷新列表" onclick="loadFiles(true)"></button>
         </div>
-        <table class="table">
-          <thead><tr><th>ID</th><th>策略</th><th>版本</th><th>更新时间</th><th></th></tr></thead>
-          <tbody id="ownedFiles"></tbody>
-        </table>
+        <div class="table-wrap scroll-y">
+          <table class="table">
+            <thead><tr><th class="col-id">ID</th><th class="col-policy">策略</th><th class="col-version">版本</th><th class="col-time">更新时间</th><th class="col-actions">操作</th></tr></thead>
+            <tbody id="ownedFiles"></tbody>
+          </table>
+        </div>
       </section>
     </section>
   </main>
@@ -190,21 +274,193 @@
     <div class="dialog">
       <div class="dialog-head">
         <h2 id="modalTitle"></h2>
-        <button class="icon gray" title="关闭" onclick="closeModal()">×</button>
+        <button class="icon gray" title="关闭" onclick="closeModal()"></button>
       </div>
-      <div id="modalBody"></div>
+      <div id="modalBody" class="dialog-body"></div>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <p id="loadingSub" class="loading-sub">正在处理</p>
+      <p id="loadingText" class="loading-text">请稍候…</p>
     </div>
   </div>
 
   <script>
+    const ICONS = {
+      upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>',
+      download: '<svg viewBox="0 0 24 24"><path d="M12 4v12m0 0l-4-4m4 4l4-4"/><path d="M4 18v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>',
+      key: '<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.5"/><path d="M11.2 10.8L19 18.6"/><path d="M15 15h4v4"/></svg>',
+      keys: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10M4 18h10"/><circle cx="19" cy="17" r="2"/></svg>',
+      refresh: '<svg viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.14-9.36L23 10"/></svg>',
+      close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+      check: '<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>',
+      plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+      logout: '<svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
+      edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 10-3-3L5 17v3"/><path d="M13.5 6.5l3 3"/></svg>',
+      trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M9 7V5h6v2"/><path d="M7 7l1 12h8l1-12"/></svg>',
+      decrypt: '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 118 0v3"/><circle cx="12" cy="15" r="1" fill="currentColor" stroke="none"/></svg>',
+    };
+    function iconNameFromTitle(t) {
+      t = (t || '').trim();
+      if (!t) return '';
+      if (t.includes('退出')) return 'logout';
+      if (t.includes('我的密钥')) return 'keys';
+      if (t.includes('密钥申请')) return 'key';
+      if (t.includes('刷新') || t.includes('清空') || t.includes('重置')) return 'refresh';
+      if (t.includes('上传')) return 'upload';
+      if (t.includes('下载')) return 'download';
+      if (t.includes('解密')) return 'decrypt';
+      if (t.includes('关闭')) return 'close';
+      if (t.includes('修改')) return 'edit';
+      if (t.includes('删除')) return 'trash';
+      if (t.includes('添加')) return 'plus';
+      if (t === '登录' || t.includes('注册') || t.includes('提交') || (t.includes('申请') && !t.includes('密钥'))) return 'check';
+      return '';
+    }
+    function iconBtn(name, cls = '', attrs = '') {
+      return `<button class="icon ${cls}" data-icon="${name}" ${attrs}>${ICONS[name] || ''}</button>`;
+    }
+    function decorateIcons(root = document) {
+      root.querySelectorAll('button.icon').forEach((btn) => {
+        const preset = btn.dataset.icon;
+        const name = preset || iconNameFromTitle(btn.getAttribute('title') || '');
+        if (name && ICONS[name]) {
+          btn.innerHTML = ICONS[name];
+          btn.dataset.icon = name;
+        }
+      });
+    }
+    function showLoading(sub, text) {
+      $('loadingSub').textContent = sub || '正在处理';
+      $('loadingText').textContent = text || '请稍候…';
+      $('loadingOverlay').classList.remove('hidden');
+    }
+    function hideLoading() { $('loadingOverlay').classList.add('hidden'); }
+    const FILE_TABLE_HEAD = '<thead><tr><th class="col-id">ID</th><th class="col-policy">策略</th><th class="col-version">版本</th><th class="col-time">更新时间</th><th class="col-actions">操作</th></tr></thead>';
+    function fileTableHtml(tbodyId) {
+      return `<div class="table-wrap scroll-y scroll-modal"><table class="table">${FILE_TABLE_HEAD}<tbody id="${tbodyId}"></tbody></table></div>`;
+    }
+
     const $ = (id) => document.getElementById(id);
-    const state = { user: null, regAttrs: [], policyParts: [], policyOps: [], editingAsset: null };
+    const state = { user: null, regAttrs: [], policyRoot: null, policyGroupStack: [], nextJoin: 'and', editingAsset: null, filesById: {} };
+
+    const POLICY_INT_MIN = 0;
+    const POLICY_INT_MAX = 65535;
+    const POLICY_HOUR_MAX = 23;
+    const POLICY_ATTR_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 
     function authName(org) { return org === 'org2' ? 'auth1' : 'auth0'; }
     function withAuth(attr, org) { return attr.includes('@') ? attr : `${attr}@${authName(org)}`; }
-    function modal(title, html) { $('modalTitle').textContent = title; $('modalBody').innerHTML = html; $('modal').classList.add('show'); }
+    function isNumericPart(part) { return /\s(==|>=|<=|>|<)\s+\d+\s*$/.test(part); }
+    function numericMeta(part) {
+      const m = part.match(/\s(==|>=|<=|>|<)\s+(\d+)\s*$/);
+      return m ? { op: m[1], value: Number(m[2]) } : null;
+    }
+    function validateNumericCompare(attr, op, value, isHour) {
+      if (!POLICY_ATTR_RE.test(attr)) return '属性名仅允许英文字母、数字、下划线，且以字母开头';
+      if (!Number.isInteger(value)) return '须为非负整数';
+      const max = isHour ? POLICY_HOUR_MAX : POLICY_INT_MAX;
+      if (value < POLICY_INT_MIN || value > max) return `数值须在 ${POLICY_INT_MIN}–${max}`;
+      if (op === '>=' && value < 1) return '>= 的比较值须为 ≥1 的自然数';
+      if (op === '<' && value < 1) return '< 的比较值须为 ≥1 的自然数';
+      return '';
+    }
+    function validatePolicyPart(part, existingParts) {
+      const meta = numericMeta(part);
+      if (meta) {
+        const attr = part.split('@')[0];
+        const err = validateNumericCompare(attr, meta.op, meta.value, /^hour$/i.test(attr));
+        if (err) return err;
+        if (existingParts.some(isNumericPart)) return '策略只能包含一条数值比较';
+        return '';
+      }
+      return '';
+    }
+    function initPolicyState() {
+      state.policyRoot = { join: 'and', items: [] };
+      state.policyGroupStack = [state.policyRoot];
+      state.nextJoin = 'and';
+      state.pendingJoin = null;
+    }
+    function currentPolicyGroup() {
+      return state.policyGroupStack[state.policyGroupStack.length - 1];
+    }
+    function collectPolicyLeaves(group = state.policyRoot) {
+      const leaves = [];
+      function walk(g) {
+        for (const item of g.items) {
+          if (item.type === 'leaf') leaves.push(item.text);
+          else walk(item.group);
+        }
+      }
+      walk(group);
+      return leaves;
+    }
+    function formatPolicyLeaf(text, multiClause) {
+      if (multiClause && isNumericPart(text)) return `(${text})`;
+      return text;
+    }
+    function renderPolicyGroup(g) {
+      if (!g.items.length) return '';
+      const multi = g.items.length > 1;
+      const parts = g.items.map((item) => (
+        item.type === 'leaf' ? formatPolicyLeaf(item.text, multi) : renderPolicyGroup(item.group)
+      ));
+      if (parts.length === 1) return parts[0];
+      return `(${parts.join(` ${policyJoinOp(g.join || 'and')} `)})`;
+    }
+    function validateBracketsClosed() {
+      const depth = state.policyGroupStack.length - 1;
+      if (depth > 0) return `还有 ${depth} 层括号未闭合，请点 ) 或清空策略`;
+      return '';
+    }
+    function validateBeforeAppendLeaf(text) {
+      const leaves = collectPolicyLeaves();
+      return validatePolicyPart(text, leaves);
+    }
+    function validateCurrentPolicy() {
+      const bracketErr = validateBracketsClosed();
+      if (bracketErr) return bracketErr;
+      const leaves = collectPolicyLeaves();
+      if (leaves.length === 0) return '请先添加至少一条策略';
+      for (let i = 0; i < leaves.length; i++) {
+        const err = validatePolicyPart(leaves[i], leaves.slice(0, i));
+        if (err) return err;
+      }
+      return '';
+    }
+    function modal(title, html) {
+      $('modalTitle').textContent = title;
+      $('modalBody').innerHTML = html;
+      $('modal').classList.add('show');
+      decorateIcons($('modalBody'));
+      decorateIcons($('modal').querySelector('.dialog-head'));
+    }
     function closeModal() { $('modal').classList.remove('show'); }
     function message(title, msg) { modal(title, `<div class="msg">${escapeHtml(String(msg))}</div>`); }
+    function showFormHint(hintId, text, isError = true) {
+      const el = $(hintId);
+      if (!el) return;
+      el.textContent = text;
+      el.classList.toggle('error', isError);
+      el.classList.toggle('ok', !isError);
+      el.classList.remove('hidden');
+    }
+    function clearFormHint(hintId) {
+      const el = $(hintId);
+      if (!el) return;
+      el.classList.add('hidden');
+      el.textContent = '';
+      el.classList.remove('error', 'ok');
+    }
+    function markFieldInvalid(id, invalid) {
+      const el = $(id);
+      if (!el) return;
+      el.classList.toggle('field-invalid', invalid);
+    }
     function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     async function api(path, body, method = 'POST') {
@@ -237,23 +493,35 @@
     function removeRegAttr(i) { state.regAttrs.splice(i, 1); renderRegAttrs(); }
 
     async function register() {
+      clearFormHint('registerHint');
+      const username = $('regUser').value.trim();
+      const password = $('regPass').value;
+      if (!username) { showFormHint('registerHint', '请填写用户名'); markFieldInvalid('regUser', true); return; }
+      if (!password) { showFormHint('registerHint', '请填写密码'); markFieldInvalid('regPass', true); return; }
+      markFieldInvalid('regUser', false);
+      markFieldInvalid('regPass', false);
       try {
         await api('/api/v1/register', {
-          username: $('regUser').value.trim(),
-          password: $('regPass').value,
+          username, password,
           orgName: $('regOrg').value,
           attributes: state.regAttrs.join(','),
         });
         $('regUser').value = ''; $('regPass').value = ''; state.regAttrs = []; renderRegAttrs();
-        message('注册成功', '用户已注册，可继续注册下一个用户。');
-      } catch (e) { message('注册失败', e.message); }
+        showFormHint('registerHint', '注册成功，可继续注册下一个用户。', false);
+      } catch (e) { showFormHint('registerHint', e.message); }
     }
 
     async function login() {
+      clearFormHint('loginHint');
+      const username = $('loginUser').value.trim();
+      const password = $('loginPass').value;
+      if (!username) { showFormHint('loginHint', '请填写用户名'); markFieldInvalid('loginUser', true); return; }
+      if (!password) { showFormHint('loginHint', '请填写密码'); markFieldInvalid('loginPass', true); return; }
+      markFieldInvalid('loginUser', false);
+      markFieldInvalid('loginPass', false);
       try {
         const data = await api('/api/v1/login', {
-          username: $('loginUser').value.trim(),
-          password: $('loginPass').value,
+          username, password,
           orgName: $('loginOrg').value,
         });
         state.user = data;
@@ -263,7 +531,7 @@
         $('userInfo').textContent = `${data.orgName} / ${data.username}`;
         $('userInfo').dataset.tip = `属性：${data.attributes || '无'}`;
         await loadFiles(true);
-      } catch (e) { message('登录失败', e.message); }
+      } catch (e) { showFormHint('loginHint', e.message); }
     }
     function logout() {
       state.user = null;
@@ -275,108 +543,278 @@
 
     function openUpload(asset) {
       state.editingAsset = asset || null;
-      state.policyParts = [];
-      state.policyOps = [];
+      initPolicyState();
       const org = state.user?.orgName || 'org1';
       modal(asset ? '修改文件' : '上传文件', `
         <div class="stack">
+          <div id="uploadHint" class="form-hint hidden"></div>
           <label>文本内容</label>
-          <textarea id="fileContent"></textarea>
+          <textarea id="fileContent" oninput="markFieldInvalid('fileContent', false)"></textarea>
           <label>时间</label>
           <div class="row">
-            <input type="number" id="polHour" min="0" max="23" value="${new Date().getHours()}" style="max-width:88px" />
-            <select id="polHourOp"><option value="==">==</option><option value=">=">&gt;=</option><option value="<=">&lt;=</option></select>
+            <input type="number" id="polHour" min="0" max="23" step="1" value="${new Date().getHours()}" style="max-width:88px" />
+            <select id="polHourOp"><option value="==">==</option><option value="<=">&lt;=</option><option value=">">&gt;</option></select>
             <select id="polHourOrg"><option value="org1" ${org==='org1'?'selected':''}>org1</option><option value="org2" ${org==='org2'?'selected':''}>org2</option></select>
-            <button class="icon" title="添加" onclick="addPolicyTime()">+</button>
+            <button class="icon" title="添加" onclick="addPolicyTime()"></button>
           </div>
           <label>地点</label>
           <div class="row">
             <select id="polLoc"><option value="school">school</option><option value="home">home</option><option value="others">others</option></select>
             <select id="polLocOrg"><option value="org1" ${org==='org1'?'selected':''}>org1</option><option value="org2" ${org==='org2'?'selected':''}>org2</option></select>
-            <button class="icon" title="添加" onclick="addPolicyLocation()">+</button>
+            <button class="icon" title="添加" onclick="addPolicyLocation()"></button>
           </div>
           <label>属性</label>
           <div class="row">
             <input id="polName" placeholder="名称" />
-            <select id="polOp"><option value="">字符</option><option value="==">==</option><option value=">=">&gt;=</option><option value="<=">&lt;=</option><option value=">">&gt;</option><option value="<">&lt;</option></select>
-            <input id="polValue" placeholder="数值" style="max-width:88px" />
+            <select id="polOp"><option value="">字符</option><option value="==">==</option><option value="<=">&lt;=</option><option value=">">&gt;</option></select>
+            <input id="polValue" type="number" min="0" max="65535" step="1" placeholder="0–65535" style="max-width:88px" />
             <select id="polOrg"><option value="org1">org1</option><option value="org2">org2</option></select>
-            <button class="icon" title="添加" onclick="addPolicyPart()">+</button>
+            <button class="icon" title="添加" onclick="addPolicyPart()"></button>
           </div>
           <div class="row">
-            <button class="icon gray" title="并" onclick="setNextOp('and')">∧</button>
-            <button class="icon gray" title="或" onclick="setNextOp('or')">∨</button>
-            <button class="icon red" title="清空" onclick="clearPolicy()">↺</button>
+            <button id="btnJoinAnd" class="icon gray" title="并" onclick="setNextOp('and')">∧</button>
+            <button id="btnJoinOr" class="icon gray" title="或" onclick="setNextOp('or')">∨</button>
+            <button id="btnGroupOpen" class="icon gray" title="左括号" onclick="beginPolicyGroup()">(</button>
+            <button id="btnGroupClose" class="icon gray" title="右括号" onclick="endPolicyGroup()">)</button>
+            <button class="icon red" data-icon="refresh" title="清空策略" onclick="clearPolicy()"></button>
           </div>
           <div id="policyPreview" class="policy-preview">空</div>
-          <div class="row" style="justify-content:flex-end"><button class="icon green" title="提交" onclick="submitFile()">✓</button></div>
+          <div class="row" style="justify-content:flex-end"><button id="submitFileBtn" class="icon green" title="提交" onclick="submitFile()"></button></div>
         </div>`);
       if (asset) {
         setTimeout(() => { $('policyPreview').textContent = asset.policy || '请重新设置策略'; }, 0);
+      } else {
+        setTimeout(() => renderPolicy(), 0);
       }
     }
 
-    function addPolicyTime() {
-      const hour = Number($('polHour').value);
-      if (Number.isNaN(hour) || hour < 0 || hour > 23) { message('策略', '小时须在 0–23'); return; }
-      const op = $('polHourOp').value;
-      const org = $('polHourOrg').value;
-      state.policyParts.push(`hour@${authName(org)} ${op} ${hour}`);
+    function uploadHint(text, isError = true) { showFormHint('uploadHint', text, isError); }
+
+    function appendPolicyLeaf(text) {
+      const g = currentPolicyGroup();
+      if (g.items.length > 0) g.join = state.pendingJoin || state.nextJoin || 'and';
+      g.items.push({ type: 'leaf', text });
+      state.pendingJoin = null;
+      refreshPolicyOpButtons();
+    }
+
+    function beginPolicyGroup() {
+      clearFormHint('uploadHint');
+      state.policyGroupStack.push({
+        join: 'and',
+        items: [],
+        joinBefore: state.pendingJoin || state.nextJoin || 'and',
+      });
+      state.pendingJoin = null;
+      refreshPolicyOpButtons();
       renderPolicy();
     }
+
+    function endPolicyGroup() {
+      clearFormHint('uploadHint');
+      if (state.policyGroupStack.length <= 1) {
+        uploadHint('括号未配对：没有可闭合的 (');
+        return;
+      }
+      const g = state.policyGroupStack.pop();
+      if (g.items.length === 0) {
+        state.policyGroupStack.push(g);
+        uploadHint('空括号不允许');
+        renderPolicy();
+        return;
+      }
+      const parent = currentPolicyGroup();
+      if (parent.items.length > 0) {
+        parent.join = g.joinBefore || state.pendingJoin || state.nextJoin || 'and';
+      }
+      parent.items.push({ type: 'group', group: { join: g.join, items: g.items } });
+      state.pendingJoin = null;
+      renderPolicy();
+      refreshPolicyOpButtons();
+    }
+
+    function addPolicyTime() {
+      clearFormHint('uploadHint');
+      const hour = Number($('polHour').value);
+      const op = $('polHourOp').value;
+      const org = $('polHourOrg').value;
+      const part = `hour@${authName(org)} ${op} ${hour}`;
+      const err = validateBeforeAppendLeaf(part) || validateNumericCompare('hour', op, hour, true);
+      if (err) { uploadHint(err); return; }
+      appendPolicyLeaf(part);
+      renderPolicy();
+      uploadHint('已添加时间条件', false);
+    }
     function addPolicyLocation() {
+      clearFormHint('uploadHint');
       const loc = $('polLoc').value;
       const org = $('polLocOrg').value;
-      state.policyParts.push(withAuth('loc' + loc, org));
+      const part = withAuth('loc' + loc, org);
+      const err = validateBeforeAppendLeaf(part);
+      if (err) { uploadHint(err); return; }
+      appendPolicyLeaf(part);
       renderPolicy();
+      uploadHint('已添加地点条件', false);
     }
 
     function policyJoinOp(op) {
       return op === 'or' ? '\\/' : '/\\';
     }
-    function setNextOp(op) { state.policyOps[state.policyParts.length] = op; }
+    function setNextOp(op) {
+      state.nextJoin = op;
+      state.pendingJoin = op;
+      refreshPolicyOpButtons();
+      renderPolicy();
+    }
+
+    function refreshPolicyOpButtons() {
+      const andBtn = $('btnJoinAnd');
+      const orBtn = $('btnJoinOr');
+      if (andBtn) andBtn.classList.toggle('op-active', state.pendingJoin === 'and');
+      if (orBtn) orBtn.classList.toggle('op-active', state.pendingJoin === 'or');
+    }
+
+    function renderPolicyGroupHtml(g) {
+      if (!g.items.length) return '';
+      const parts = g.items.map((item) => (
+        item.type === 'leaf'
+          ? `<span class="policy-leaf">${escapeHtml(item.text)}</span>`
+          : `<span class="policy-group">(${renderPolicyGroupHtml(item.group)})</span>`
+      ));
+      if (parts.length === 1) return parts[0];
+      const join = `<span class="policy-op">${escapeHtml(policyJoinOp(g.join || 'and'))}</span>`;
+      return `(${parts.join(` ${join} `)})`;
+    }
+
+    function renderOpenGroupHtml(level) {
+      const g = state.policyGroupStack[level];
+      const depth = state.policyGroupStack.length - 1;
+      let html = renderPolicyGroupHtml(g);
+      if (level < depth) {
+        const child = state.policyGroupStack[level + 1];
+        if (g.items.length > 0) {
+          html += ' ';
+          html += `<span class="policy-op">${escapeHtml(policyJoinOp(child.joinBefore || state.nextJoin || 'and'))}</span>`;
+        }
+        html += ' <span class="policy-pending">(</span>';
+        html += renderOpenGroupHtml(level + 1);
+        html += '<span class="policy-pending">)</span>';
+      } else if (state.pendingJoin) {
+        html += html ? ' ' : '';
+        html += `<span class="policy-pending">${escapeHtml(policyJoinOp(state.pendingJoin))}</span>`;
+      }
+      return html;
+    }
+
+    function renderPolicy() {
+      const el = $('policyPreview');
+      if (!el) return;
+      const depth = state.policyGroupStack.length - 1;
+      let html = renderPolicyGroupHtml(state.policyRoot);
+
+      if (depth === 0) {
+        if (state.pendingJoin) {
+          html += html ? ' ' : '';
+          html += `<span class="policy-pending">${escapeHtml(policyJoinOp(state.pendingJoin))}</span>`;
+        }
+      } else {
+        const outer = state.policyGroupStack[1];
+        if (state.policyRoot.items.length > 0) {
+          html += html ? ' ' : '';
+          html += `<span class="policy-op">${escapeHtml(policyJoinOp(outer.joinBefore || state.nextJoin || 'and'))}</span>`;
+        }
+        html += ' <span class="policy-pending">(</span>';
+        html += renderOpenGroupHtml(1);
+        html += '<span class="policy-pending">)</span>';
+      }
+
+      el.innerHTML = html || '<span class="policy-empty">空</span>';
+    }
     function addPolicyPart() {
+      clearFormHint('uploadHint');
       const name = $('polName').value.trim();
-      if (!name) return;
+      if (!name) { uploadHint('请填写属性名'); markFieldInvalid('polName', true); return; }
+      markFieldInvalid('polName', false);
       const op = $('polOp').value;
-      const value = $('polValue').value.trim();
+      const valueRaw = $('polValue').value.trim();
       const org = $('polOrg').value;
       if (name.startsWith('hour') || /^loc(school|home|others)$/i.test(name)) {
-        message('策略', '时间、地点请用上方条目');
+        uploadHint('时间、地点请用上方专用条目添加');
         return;
       }
-      let part = op
-        ? `${name}@${authName(org)} ${op} ${Number(value || 0)}`
-        : withAuth(name, org);
-      state.policyParts.push(part);
+      if (!POLICY_ATTR_RE.test(name)) {
+        uploadHint('属性名仅允许英文字母、数字、下划线，且以字母开头');
+        markFieldInvalid('polName', true);
+        return;
+      }
+      let part;
+      if (op) {
+        if (valueRaw === '') { uploadHint('请填写比较数值'); markFieldInvalid('polValue', true); return; }
+        markFieldInvalid('polValue', false);
+        const value = Number(valueRaw);
+        const err = validateNumericCompare(name, op, value, false);
+        if (err) { uploadHint(err); return; }
+        part = `${name}@${authName(org)} ${op} ${value}`;
+      } else {
+        part = withAuth(name, org);
+      }
+      const comboErr = validateBeforeAppendLeaf(part);
+      if (comboErr) { uploadHint(comboErr); return; }
+      appendPolicyLeaf(part);
       $('polName').value = '';
       $('polValue').value = '';
       renderPolicy();
+      uploadHint('已添加属性条件', false);
     }
-    function clearPolicy() { state.policyParts = []; state.policyOps = []; renderPolicy(); }
+    function clearPolicy() {
+      initPolicyState();
+      renderPolicy();
+      uploadHint('策略已清空', false);
+    }
     function currentPolicy() {
-      return state.policyParts.reduce((acc, part, i) => {
-        if (i === 0) return part;
-        return `(${acc} ${policyJoinOp(state.policyOps[i] || 'and')} ${part})`;
-      }, '');
+      return renderPolicyGroup(state.policyRoot);
     }
-    function renderPolicy() { $('policyPreview').textContent = currentPolicy() || '空'; }
 
     async function submitFile() {
+      clearFormHint('uploadHint');
+      markFieldInvalid('fileContent', false);
+      const content = $('fileContent').value;
+      if (!content.trim()) {
+        uploadHint('请填写要加密的文本内容');
+        markFieldInvalid('fileContent', true);
+        $('fileContent').focus();
+        return;
+      }
+      const policy = currentPolicy();
+      if (!policy || policy === '空') {
+        uploadHint('请先添加至少一条策略（时间、地点或属性旁的 + ）');
+        return;
+      }
+      const policyErr = validateCurrentPolicy();
+      if (policyErr) {
+        uploadHint(policyErr);
+        return;
+      }
       try {
-        const payload = {
-          userId: state.user.id,
-          content: $('fileContent').value,
-          policy: currentPolicy(),
-        };
-        if (!payload.policy) throw new Error('请先添加策略');
-        const data = state.editingAsset
+        const payload = { userId: state.user.id, content, policy };
+        const isUpdate = !!state.editingAsset;
+        const btn = $('submitFileBtn');
+        if (btn) btn.disabled = true;
+        showLoading(isUpdate ? '正在更新文件' : '正在加密上链', 'ABE 加密与 Fabric 写入可能需要数十秒…');
+        const data = isUpdate
           ? await api('/api/v1/files/update', { ...payload, assetId: state.editingAsset.assetId })
           : await api('/api/v1/files/encrypt', { ...payload, filename: 'demo.txt' });
+        hideLoading();
+        if (btn) btn.disabled = false;
         closeModal();
         message('提交成功', `资产 ID：${data.assetId}`);
         await loadFiles(true);
-      } catch (e) { message('提交失败', e.message); }
+      } catch (e) {
+        hideLoading();
+        const btn = $('submitFileBtn');
+        if (btn) btn.disabled = false;
+        uploadHint(e.message || '提交失败');
+      }
     }
 
     function localDateTimeValue(d = new Date()) {
@@ -389,6 +827,7 @@
       const h = new Date().getHours();
       modal('密钥申请', `
         <div class="stack">
+          <div id="keyHint" class="form-hint hidden"></div>
           <label>时间</label>
           <div class="row">
             <input type="number" id="keyHour" min="0" max="23" value="${h}" style="max-width:88px" />
@@ -396,28 +835,46 @@
           </div>
           <label>地点</label>
           <select id="location"><option value="school">school</option><option value="home">home</option><option value="others">others</option></select>
-          <div class="row"><button class="icon green" title="一键申请" onclick="requestAutoKeys()">✓</button></div>
+          <div class="row"><button class="icon green" title="申请" onclick="requestAutoKeys()"></button></div>
           <label>手动</label>
-          <div class="row"><input id="manualAttr" placeholder="hour@auth0 == 20" /><button class="icon" title="申请" onclick="requestManualKey()">+</button></div>
+          <div class="row"><input id="manualAttr" placeholder="hour@${org==='org2'?'auth1':'auth0'} == 20" /><button class="icon" title="添加" onclick="requestManualKey()"></button></div>
+          <p style="margin:0;color:var(--muted);font-size:0.82rem">密钥仅限本组织 authority（${org} → @${org==='org2'?'auth1':'auth0'}），不支持跨 org 申请。</p>
         </div>`);
     }
     async function requestAutoKeys() {
+      clearFormHint('keyHint');
       try {
         const hour = Number($('keyHour').value);
+        if (Number.isNaN(hour) || hour < 0 || hour > 23) {
+          showFormHint('keyHint', '小时须在 0–23');
+          markFieldInvalid('keyHour', true);
+          return;
+        }
+        markFieldInvalid('keyHour', false);
         const data = await api('/api/v1/keys/auto', {
           userId: state.user.id,
           location: $('location').value,
-          hour: Number.isNaN(hour) ? undefined : hour,
+          hour,
           hourOp: $('keyHourOp').value,
         });
-        message('密钥申请成功', JSON.stringify(data.issued, null, 2));
-      } catch (e) { message('密钥申请失败', e.message); }
+        showFormHint('keyHint', `申请成功：${JSON.stringify(data.issued)}`, false);
+        await loadMyKeysPreview('keyHint');
+      } catch (e) { showFormHint('keyHint', e.message); }
     }
     async function requestManualKey() {
+      clearFormHint('keyHint');
+      const attribute = $('manualAttr').value.trim();
+      if (!attribute) {
+        showFormHint('keyHint', '请填写要申请的属性');
+        markFieldInvalid('manualAttr', true);
+        return;
+      }
+      markFieldInvalid('manualAttr', false);
       try {
-        const data = await api('/api/v1/keys/request', { userId: state.user.id, attribute: $('manualAttr').value.trim() });
-        message('密钥申请成功', JSON.stringify(data, null, 2));
-      } catch (e) { message('密钥申请失败', e.message); }
+        const data = await api('/api/v1/keys/request', { userId: state.user.id, attribute });
+        showFormHint('keyHint', `申请成功 v${data.version || 1}：${data.attribute}（${data.keys} 把）`, false);
+        await loadMyKeysPreview('keyHint');
+      } catch (e) { showFormHint('keyHint', e.message); }
     }
 
     async function loadFiles(ownedOnly) {
@@ -429,29 +886,81 @@
     }
     function renderFiles(files, ownedOnly) {
       const target = ownedOnly ? $('ownedFiles') : $('downloadFiles');
-      target.innerHTML = files.map(f => `
-        <tr>
-          <td title="${escapeHtml(f.assetId)}">${escapeHtml(shortId(f.assetId))}</td>
-          <td>${escapeHtml(f.policy || '')}</td>
-          <td>${f.version || ''}</td>
-          <td>${escapeHtml(f.updatedAt || '')}</td>
-          <td class="row">
-            ${ownedOnly ? `<button class="icon gray" title="修改" onclick='openUpload(${JSON.stringify(f)})'>✎</button><button class="icon red" title="删除" onclick="deleteFile('${escapeHtml(f.assetId)}')">⌫</button>` : ''}
-            <button class="icon green" title="解密" onclick="decryptFile('${escapeHtml(f.assetId)}')">↓</button>
-          </td>
-        </tr>`).join('') || '<tr><td colspan="5">暂无文件</td></tr>';
+      const esc = (s) => escapeHtml(String(s));
+      files.forEach(f => { state.filesById[f.assetId] = f; });
+      target.innerHTML = files.map(f => {
+        const id = esc(f.assetId);
+        const rawId = String(f.assetId).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const actions = ownedOnly
+          ? `${iconBtn('edit', 'sm gray', `title="修改" onclick="openUploadById('${rawId}')"`)}${iconBtn('trash', 'sm red', `title="删除" onclick="deleteFile('${id}')"`)}`
+          : '';
+        return `<tr>
+          <td class="col-id" title="${id}">${esc(shortId(f.assetId))}</td>
+          <td class="col-policy">${esc(f.policy || '')}</td>
+          <td class="col-version">${f.version || ''}</td>
+          <td class="col-time">${esc(formatTime(f.updatedAt || ''))}</td>
+          <td class="col-actions"><span class="cell-actions">${actions}${iconBtn('decrypt', 'sm green', `title="解密" onclick="decryptFile('${id}')"`)}</span></td>
+        </tr>`;
+      }).join('') || '<tr class="table-empty"><td colspan="5">暂无文件</td></tr>';
     }
-    function shortId(id) { return id.length > 28 ? id.slice(0, 28) + '…' : id; }
+    function openUploadById(assetId) { openUpload(state.filesById[assetId]); }
+    function shortId(id) { return id.length > 36 ? id.slice(0, 36) + '…' : id; }
+    function formatTime(s) {
+      if (!s) return '';
+      const m = String(s).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+      return m ? `${m[1]} ${m[2]}` : s;
+    }
 
     async function openDownload() {
-      modal('下载文件', '<table class="table"><thead><tr><th>ID</th><th>策略</th><th>版本</th><th>更新时间</th><th></th></tr></thead><tbody id="downloadFiles"></tbody></table>');
+      modal('下载文件', fileTableHtml('downloadFiles'));
       await loadFiles(false);
     }
+    async function openMyKeysDialog() {
+      modal('我的密钥', '<div id="myKeysBody" class="stack">加载中…</div>');
+      await renderMyKeysTable('myKeysBody');
+    }
+    async function loadMyKeysPreview(hintId) {
+      if (!$(hintId)) return;
+      const el = document.createElement('div');
+      el.style.marginTop = '10px';
+      await renderMyKeysTable(el);
+      const hint = $(hintId);
+      const old = hint.nextElementSibling;
+      if (old && old.classList.contains('keys-preview')) old.remove();
+      el.classList.add('keys-preview');
+      hint.parentNode.insertBefore(el, hint.nextSibling);
+    }
+    async function renderMyKeysTable(container) {
+      const target = typeof container === 'string' ? $(container) : container;
+      if (!state.user) { target.innerHTML = '<div class="msg">未登录</div>'; return; }
+      try {
+        const keys = await api(`/api/v1/keys?userId=${state.user.id}`, undefined, 'GET');
+        if (!keys.length) {
+          target.innerHTML = '<div class="msg">暂无密钥，请先在「密钥申请」中申请</div>';
+          return;
+        }
+        target.innerHTML = `<div class="table-wrap scroll-y scroll-modal"><table class="table table-keys"><thead><tr><th class="col-policy">属性</th><th class="col-version">版本</th><th class="col-count">子钥数</th><th class="col-time">申请时间</th></tr></thead><tbody>${
+          keys.map(k => `<tr><td class="col-policy">${escapeHtml(k.attribute)}</td><td class="col-version">v${k.version}</td><td class="col-count">${k.keys}</td><td class="col-time">${escapeHtml(formatTime(k.createdAt || ''))}</td></tr>`).join('')
+        }</tbody></table></div>`;
+      } catch (e) {
+        target.innerHTML = `<div class="msg">${escapeHtml(e.message)}</div>`;
+      }
+    }
+
     async function decryptFile(assetId) {
       try {
+        showLoading('正在解密', '正在校验策略并恢复内容…');
         const data = await api('/api/v1/files/decrypt', { userId: state.user.id, assetId });
-        message('解密成功', data.content);
-      } catch (e) { message('权限不足或解密失败', e.message); }
+        hideLoading();
+        let extra = '';
+        if (data.issuedKeys && data.issuedKeys.length) {
+          extra = `\n\n（已自动申请密钥：${data.issuedKeys.map(k => `${k.attribute} v${k.version || 1}`).join('、')}）`;
+        }
+        message('解密成功', data.content + extra);
+      } catch (e) {
+        hideLoading();
+        message('权限不足或解密失败', e.message);
+      }
     }
     async function deleteFile(assetId) {
       try {
@@ -459,6 +968,8 @@
         await loadFiles(true);
       } catch (e) { message('删除失败', e.message); }
     }
+
+    document.addEventListener('DOMContentLoaded', () => decorateIcons(document.body));
   </script>
 </body>
 </html>

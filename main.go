@@ -110,10 +110,11 @@ func (o *Orchestrator) StartContainers() error {
 // PauseNetwork 停止 Fabric 容器但保留证书、账本卷、数据库和本地文件。
 func (o *Orchestrator) PauseNetwork() error {
 	log.Info("pausing fabric containers (persistent data kept)")
+	fabricdocker.StopCCAASContainers(o.cfg)
 	return o.StopContainers()
 }
 
-// ResumeNetwork 从暂停状态恢复 Fabric 容器。
+// ResumeNetwork 从暂停状态恢复 Fabric 容器，并确保 CCAAS 链码可用。
 func (o *Orchestrator) ResumeNetwork() error {
 	log.Info("resuming fabric containers from paused state")
 	if err := o.StartContainers(); err != nil {
@@ -122,10 +123,21 @@ func (o *Orchestrator) ResumeNetwork() error {
 	if err := fabricdocker.VerifyCoreContainersRunning(); err != nil {
 		return err
 	}
-	if err := fabricdocker.EnsureCCAASContainers(o.cfg); err != nil {
-		log.Warn("ccaas containers: %v (re-run chaincode deploy if file/query APIs fail)", err)
+	return o.ensureChaincodeReady()
+}
+
+// ensureChaincodeReady 恢复或部署链码，保证 user_client 链上接口可用。
+func (o *Orchestrator) ensureChaincodeReady() error {
+	if strings.EqualFold(o.cfg.ChaincodeDeploy, "legacy") {
+		return nil
 	}
-	return nil
+	if err := fabricdocker.EnsureCCAASContainers(o.cfg); err == nil {
+		log.Info("ccaas chaincode containers ready")
+		return nil
+	} else {
+		log.Warn("ccaas ensure failed: %v; redeploying chaincode", err)
+	}
+	return o.DeployChaincode()
 }
 
 func (o *Orchestrator) StopContainers() error {
@@ -247,7 +259,7 @@ func (o *Orchestrator) DeployChaincode() error {
 		return err
 	}
 	if err := fabricdocker.EnsureCCAASContainers(o.cfg); err != nil {
-		log.Warn("post-deploy ccaas check: %v", err)
+		return err
 	}
 	return nil
 }

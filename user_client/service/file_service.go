@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -60,17 +59,6 @@ func (s *FileService) putEncrypted(userID uint, assetID, content, policy, existi
 	if strings.TrimSpace(org.OrgJSON) == "" {
 		return nil, fmt.Errorf("organization %s is not initialized", user.OrgName)
 	}
-	_ = s.engine.LoadOrgFromJSON(org.OrgJSON)
-
-	secret, err := s.engine.NewSecret()
-	if err != nil {
-		return nil, err
-	}
-	symKey := sha256.Sum256([]byte(secret.ToJsonObj().GetP()))
-	encContent, err := aesEncrypt(symKey, []byte(content))
-	if err != nil {
-		return nil, err
-	}
 
 	gw := gateway.Get()
 	if gw == nil {
@@ -81,20 +69,32 @@ func (s *FileService) putEncrypted(userID uint, assetID, content, policy, existi
 		return nil, err
 	}
 	policy = abeengine.NormalizePolicySyntax(policy)
+	if err := abeengine.ValidateUIPolicy(policy); err != nil {
+		return nil, apperr.Wrap(apperr.ErrInvalidPolicy, "validate", err)
+	}
 	authpubs := s.engine.AuthPubsOfPolicy(policy)
 	if len(authpubs.AuthPub) == 0 {
-		return nil, fmt.Errorf("invalid policy syntax (check location/time format)")
+		return nil, apperr.Wrap(apperr.ErrInvalidPolicy, "encrypt", fmt.Errorf("syntax"))
 	}
-	for name := range authpubs.AuthPub {
-		authPubJSON, ok := pubKeys[name]
-		if !ok || authPubJSON == "" {
-			return nil, fmt.Errorf("authority public key not found on chain: %s", name)
-		}
-		authPub := abeengine.ParseAuthPub(authPubJSON)
-		if abeengine.SerializeOrg(authPub.Org) != org.OrgJSON {
-			return nil, fmt.Errorf("authority public key %s does not match user org %s; reinitialize organizations", name, user.OrgName)
-		}
-		authpubs.AuthPub[name] = authPub
+	sharedOrgJSON, err := abeengine.FillAuthPubsFromChain(authpubs, pubKeys)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.engine.LoadOrgFromJSON(sharedOrgJSON); err != nil {
+		return nil, fmt.Errorf("load shared ABE group params: %w", err)
+	}
+
+	secret, err := s.engine.NewSecret()
+	if err != nil {
+		return nil, err
+	}
+	symKey, err := abeengine.SymKeyFromSecret(secret)
+	if err != nil {
+		return nil, err
+	}
+	encContent, err := aesEncrypt(symKey, []byte(content))
+	if err != nil {
+		return nil, err
 	}
 
 	ct, err := s.engine.Encrypt(secret, policy, authpubs)
@@ -228,8 +228,9 @@ func (s *FileService) fetchOrgPubKeys(gw *gateway.Gateway) (map[string]string, e
 }
 
 type DecryptResult struct {
-	Content string `json:"content"`
-	Policy  string `json:"policy"`
+	Content    string          `json:"content"`
+	Policy     string          `json:"policy"`
+	IssuedKeys []AutoKeyResult `json:"issuedKeys,omitempty"`
 }
 
 func (s *FileService) Decrypt(userID uint, assetID string) (*DecryptResult, error) {
@@ -240,7 +241,6 @@ func (s *FileService) Decrypt(userID uint, assetID string) (*DecryptResult, erro
 	}
 
 	var ctJSON string
-	var policy string
 	gw := gateway.Get()
 	if gw == nil {
 		return nil, apperr.ErrGatewayConnect
@@ -254,26 +254,39 @@ func (s *FileService) Decrypt(userID uint, assetID string) (*DecryptResult, erro
 		return nil, apperr.Wrap(apperr.ErrInvalidInput, "decode ciphertext asset", err)
 	}
 	ctJSON, _ = asset["ciphertext"].(string)
-	policy, _ = asset["policy"].(string)
 	if strings.TrimSpace(ctJSON) == "" {
 		return nil, fmt.Errorf("ciphertext asset %s has empty ciphertext", assetID)
 	}
 
 	ct := abeengine.ParseCiphertext(ctJSON)
+	chainPolicy, _ := asset["policy"].(string)
+	policy := abeengine.NormalizePolicySyntax(ct.Policy)
 	if policy == "" {
-		policy = ct.Policy
+		policy = abeengine.NormalizePolicySyntax(chainPolicy)
 	}
-	var org db.Organization
-	if err := db.Get().Where("name = ?", user.OrgName).First(&org).Error; err != nil {
-		return nil, apperr.Wrap(apperr.ErrNotFound, "organization", err)
+	if policy == "" {
+		return nil, fmt.Errorf("密文缺少策略信息")
 	}
-	if abeengine.SerializeOrg(ct.Org) != org.OrgJSON {
-		return nil, fmt.Errorf("ciphertext org does not match user org %s; reinitialize organizations and encrypt again", user.OrgName)
+	ct.Policy = policy
+	ctOrgJSON := abeengine.SerializeOrg(ct.Org)
+	if ctOrgJSON == "" {
+		return nil, fmt.Errorf("ciphertext missing ABE group parameters")
 	}
-	userattrs := NewKeyService(s.cfg, s.engine).MergeUserKeys(user.ID, user.Username, policy)
+	if err := s.engine.LoadOrgFromJSON(ctOrgJSON); err != nil {
+		return nil, fmt.Errorf("load ciphertext ABE group params: %w", err)
+	}
+	keySvc := NewKeyService(s.cfg, s.engine)
+	issued, err := keySvc.EnsureKeysForPolicy(user, policy)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.ErrUnauthorized, "ensure policy keys", err)
+	}
+	userattrs := keySvc.MergeUserKeysForPolicy(user.ID, user.Username, policy, user)
 	secret, err := s.engine.Decrypt(ct, userattrs)
 	if err != nil {
-		return nil, apperr.ErrUnauthorized
+		if missing := abeengine.PolicyMissingUserKeys(policy, userattrs); len(missing) > 0 {
+			return nil, fmt.Errorf("缺少策略属性密钥（共 %d 项，例如 %s）", len(missing), strings.Join(missing[:min(2, len(missing))], ", "))
+		}
+		return nil, fmt.Errorf("ABE 解密失败: %w", err)
 	}
 
 	filePath := filepath.Join(s.cfg.DataDir, "files", assetID+".bin")
@@ -281,12 +294,15 @@ func (s *FileService) Decrypt(userID uint, assetID string) (*DecryptResult, erro
 	if err != nil {
 		return nil, apperr.ErrNotFound
 	}
-	symKey := sha256.Sum256([]byte(secret.ToJsonObj().GetP()))
+	symKey, err := abeengine.SymKeyFromSecret(secret)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.ErrUnauthorized, "derive content key", err)
+	}
 	plain, err := aesDecrypt(symKey, encContent)
 	if err != nil {
-		return nil, apperr.Wrap(apperr.ErrUnauthorized, "decrypt content", err)
+		return nil, fmt.Errorf("ABE 配对结果无法解密文件内容（密钥与加密时不一致，请确认注册属性值与策略匹配；旧文件请重新加密上传）")
 	}
-	return &DecryptResult{Content: string(plain), Policy: policy}, nil
+	return &DecryptResult{Content: string(plain), Policy: policy, IssuedKeys: issued}, nil
 }
 
 func aesEncrypt(key [32]byte, plaintext []byte) ([]byte, error) {

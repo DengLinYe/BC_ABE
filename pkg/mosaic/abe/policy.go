@@ -41,6 +41,9 @@ func (ln *policyListener) addLeaf(label string, isvalue bool) {
 
 // add internal node
 func (ln *policyListener) addNode(label string, childcount int) {
+	if childcount < 2 || len(ln.s) < childcount {
+		panic(fmt.Sprintf("policy stack underflow building %s node", label))
+	}
 	for i := 1; i < childcount; i++ {
 		t := new(btree)
 		t.label = label
@@ -243,6 +246,7 @@ func (ln *policyListener) ExitSexpr_linear(ctx *parser.Sexpr_linearContext) {
 		nbit := 32
 		attrs := getBagOfBits(attr, value_, nbit)
 		v := getBitString(value_, nbit)
+		ln.s = ln.s[0 : len(ln.s)-2]
 		ln.vars = ln.vars[0 : len(ln.vars)-1]
 		delete(ln.vars_t, attr)
 
@@ -361,10 +365,53 @@ func getBagOfBitsAttrs(attr string, nbit int) []string {
 	return attrs
 }
 
+// PolicyVars 返回策略展开后的属性名列表（解密所需 userkey 名称）。
+func PolicyVars(policy string) []string {
+	policy = strings.TrimSpace(policy)
+	if policy == "" {
+		return nil
+	}
+	ln := parsePolicy(policy, 0)
+	if len(ln.s) == 0 {
+		return nil
+	}
+	return append([]string(nil), ln.vars...)
+}
+
+// IssueAttributeExpansion 返回按属性签发 userkey 时实际展开的属性名。
+func IssueAttributeExpansion(issueAttr string) []string {
+	return getBagOfBitsAttrs(issueAttr, 32)
+}
+
+// ValidateAccessPolicy 校验策略能否解析并构建 LSSS（非法策略返回 error，不 panic）。
+func ValidateAccessPolicy(policy string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("policy structure invalid: %v", r)
+		}
+	}()
+	policy = strings.TrimSpace(policy)
+	if policy == "" {
+		return fmt.Errorf("empty policy")
+	}
+	ln := parsePolicy(policy, 0)
+	if len(ln.s) == 0 {
+		return fmt.Errorf("policy produced no access tree")
+	}
+	_ = encodeAccessPolicy(ln.s[0])
+	if len(ln.vars) == 0 {
+		return fmt.Errorf("policy has no attributes")
+	}
+	return nil
+}
+
 // builds access policy matrix from policy string
 func buildAccessPolicy(policy string) *AccessPolicy {
 	method := 0
 	ln := parsePolicy(policy, method)
+	if len(ln.s) == 0 {
+		panic("policy produced no access tree")
+	}
 	ap := encodeAccessPolicy(ln.s[0])
 	row := make(map[string][]int)
 	for i, v := range ln.vars {
@@ -373,6 +420,25 @@ func buildAccessPolicy(policy string) *AccessPolicy {
 	log.Debug("policy vars: %s", ln.vars)
 	log.Debug("map vars to rows: %v", row)
 	return &AccessPolicy{M: ap, Vars: ln.vars, Row: row}
+}
+
+// CheckPolicyEncryptable 校验 LSSS 矩阵行索引与变量列表一致。
+func CheckPolicyEncryptable(policy string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("policy encryptable check: %v", r)
+		}
+	}()
+	policy = strings.TrimSpace(policy)
+	ap := buildAccessPolicy(policy)
+	for attr, rows := range ap.Row {
+		for _, i := range rows {
+			if i < 0 || i >= len(ap.M) {
+				return fmt.Errorf("policy matrix mismatch for %s", attr)
+			}
+		}
+	}
+	return nil
 }
 
 // extracts authorities from a policy string
@@ -404,23 +470,22 @@ func (userattrs *UserAttrs) SelectUserAttrs(user string, policy string) *UserAtt
 		log.Debug("access policy (unfiltered, %d x %d matrix) %d",
 			len(ap.M[0]), len(ap.M), ap.M)
 
-		// policy matrix intersection with user attributes
+		// 按 LSSS 矩阵行序（与加密时一致）取用户属性交集
 		var ap_ [][]int
 		row_idx := make(map[string][]int)
 		i_ := 0
-		for attr := range userattrs.Userkey {
+		for i, attr := range ap.Vars {
+			if _, ok := userattrs.Userkey[attr]; !ok {
+				continue
+			}
 			if _, ok := userattrs.Coeff[attr]; !ok {
 				userattrs.Coeff[attr] = []int{}
 			}
-			if rows, exist := ap.Row[attr]; exist {
-				for _, i := range rows {
-					ap_row := make([]int, len(ap.M[i]))
-					copy(ap_row, ap.M[i])
-					ap_ = append(ap_, ap_row)
-					row_idx[attr] = append(row_idx[attr], i_)
-					i_++
-				}
-			}
+			ap_row := make([]int, len(ap.M[i]))
+			copy(ap_row, ap.M[i])
+			ap_ = append(ap_, ap_row)
+			row_idx[attr] = append(row_idx[attr], i_)
+			i_++
 		}
 
 		if len(ap_) > 0 {

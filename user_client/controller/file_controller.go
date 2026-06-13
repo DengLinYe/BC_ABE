@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"net/http"
-
 	"bc_abe_uc/dto"
 	"bc_abe_uc/service"
 
@@ -21,12 +19,12 @@ func NewFileController(svc *service.FileService) *FileController {
 func (c *FileController) Encrypt(ctx *gin.Context) {
 	var req dto.EncryptRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		fail(ctx, http.StatusBadRequest, err)
+		bindFail(ctx, err)
 		return
 	}
 	result, err := c.svc.Encrypt(req.UserID, req.Filename, req.Content, req.Policy)
 	if err != nil {
-		fail(ctx, httpStatus(err), err)
+		fail(ctx, err)
 		return
 	}
 	ok(ctx, result)
@@ -40,12 +38,12 @@ func (c *FileController) Update(ctx *gin.Context) {
 		Policy  string `json:"policy" binding:"required"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		fail(ctx, http.StatusBadRequest, err)
+		bindFail(ctx, err)
 		return
 	}
 	result, err := c.svc.Update(req.UserID, req.AssetID, req.Content, req.Policy)
 	if err != nil {
-		fail(ctx, httpStatus(err), err)
+		fail(ctx, err)
 		return
 	}
 	ok(ctx, result)
@@ -57,12 +55,12 @@ func (c *FileController) List(ctx *gin.Context) {
 		OwnedOnly bool `form:"ownedOnly"`
 	}
 	if err := ctx.ShouldBindQuery(&req); err != nil {
-		fail(ctx, http.StatusBadRequest, err)
+		bindFail(ctx, err)
 		return
 	}
 	files, err := c.svc.List(req.UserID, req.OwnedOnly)
 	if err != nil {
-		fail(ctx, httpStatus(err), err)
+		fail(ctx, err)
 		return
 	}
 	ok(ctx, files)
@@ -71,11 +69,11 @@ func (c *FileController) List(ctx *gin.Context) {
 func (c *FileController) Delete(ctx *gin.Context) {
 	var req dto.DeleteFileRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		fail(ctx, http.StatusBadRequest, err)
+		bindFail(ctx, err)
 		return
 	}
 	if err := c.svc.Delete(req.UserID, req.AssetID); err != nil {
-		fail(ctx, httpStatus(err), err)
+		fail(ctx, err)
 		return
 	}
 	ok(ctx, gin.H{"deleted": req.AssetID})
@@ -84,12 +82,12 @@ func (c *FileController) Delete(ctx *gin.Context) {
 func (c *FileController) Decrypt(ctx *gin.Context) {
 	var req dto.DecryptRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		fail(ctx, http.StatusBadRequest, err)
+		bindFail(ctx, err)
 		return
 	}
 	result, err := c.svc.Decrypt(req.UserID, req.AssetID)
 	if err != nil {
-		fail(ctx, httpStatus(err), err)
+		fail(ctx, err)
 		return
 	}
 	ok(ctx, result)

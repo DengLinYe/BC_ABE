@@ -4,6 +4,8 @@ go 1.25.0
 
 require bc_abe v0.0.0
 
+require bc_abe/utils v0.0.0
+
 require (
 	github.com/antlr/antlr4/runtime/Go/antlr v0.0.0-20211106181442-e4c1a74c66bd // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -13,3 +15,5 @@ require (
 )
 
 replace bc_abe => ../
+
+replace bc_abe/utils => ../utils

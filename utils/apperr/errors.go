@@ -10,6 +10,7 @@ var (
 	ErrNotFound       = errors.New("resource not found")
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrInvalidInput   = errors.New("invalid input")
+	ErrInvalidPolicy  = errors.New("invalid policy")
 	ErrDBConnect      = errors.New("database connection failed")
 	ErrGatewayConnect = errors.New("fabric gateway connection failed")
 	ErrFabricNetwork  = errors.New("fabric network operation failed")
