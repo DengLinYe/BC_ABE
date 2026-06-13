@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	abeengine "bc_abe/abe"
 	"bc_abe/utils/apperr"
 	"bc_abe/utils/config"
 	"bc_abe/utils/db"
@@ -16,7 +17,8 @@ var log = logger.New("user_client")
 func main() {
 	cfg := config.Load()
 	logger.Init(cfg.LogDir, cfg.LogLevel)
-	if _, err := db.Init(cfg.DBPath); err != nil {
+	abeengine.InitLogging(cfg.LogDir, cfg.LogLevel)
+	if _, err := db.Init(cfg); err != nil {
 		apperr.ExitOn(log, err)
 	}
 

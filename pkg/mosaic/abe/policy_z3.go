@@ -137,6 +137,6 @@ func SolvePolicy(policy string, userattrs *UserAttrs) map[string]int {
 		}
 		q[s_[i]] = tmp
 	}
-	log.Info("policy solve: %s", q)
+	log.Debug("policy solve: %s", q)
 	return q
 }

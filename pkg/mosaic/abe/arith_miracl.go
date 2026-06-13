@@ -11,7 +11,6 @@ import (
 	crv "bc_abe/pkg/mosaic/abe/miracl/core/BN254"
 	//crv "bc_abe/pkg/mosaic/abe/miracl/core/BLS12381"
 	//crv "bc_abe/pkg/mosaic/abe/miracl/core/BN462"
-	"bc_abe/pkg/mosaic/abe/log"
 )
 
 func NewPoint() Point {
@@ -147,9 +146,6 @@ func (curve *MiraclCurve) NewRandomPointOn(group string) Point {
 		p.p2 = crv.G2mul(q2, x_)
 	case "GT":
 		p.pt = crv.NewFP12rand(curve.rng); curve.RunsCount += 1
-		buf := make([]byte, 12*crv.MODBYTES)
-		p.pt.ToBytes(buf)
-		log.Info("%s", Encode(string(buf)))
 	}
 	p.Group = group
 	return p

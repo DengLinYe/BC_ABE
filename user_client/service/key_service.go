@@ -16,6 +16,8 @@ import (
 	"bc_abe/utils/config"
 	"bc_abe/utils/db"
 	"bc_abe/utils/msp"
+
+	"gorm.io/gorm"
 )
 
 // KeyService ABE 密钥申请服务。
@@ -38,10 +40,7 @@ func (s *KeyService) RequestKey(userID uint, attribute string) (AutoKeyResult, e
 	if err != nil {
 		return AutoKeyResult{}, apperr.Wrap(apperr.ErrInvalidInput, "attribute", err)
 	}
-	if !isPolicyStyleKeyAttr(spec.IssueAttr) && !userHasAttribute(user, spec.IssueAttr) {
-		return AutoKeyResult{}, apperr.ErrUnauthorized
-	}
-	if err := validateIssueAttrOrg(user.OrgName, spec.IssueAttr); err != nil {
+	if err := authorizeKeyIssue(user, spec, spec.DisplayLabel); err != nil {
 		return AutoKeyResult{}, apperr.Wrap(apperr.ErrUnauthorized, "key issue", err)
 	}
 	n, err := s.issueAndStore(user, spec)
@@ -138,6 +137,9 @@ func (s *KeyService) EnsureKeysForPolicy(user *db.UserAccount, policy string) ([
 		}
 		as, err := resolveAttrSpecForUser(user, spec.DisplayLabel, spec.IssueAttr)
 		if err != nil {
+			return issued, err
+		}
+		if err := authorizeKeyIssue(user, as, spec.DisplayLabel); err != nil {
 			return issued, err
 		}
 		n, err := s.issueAndStore(user, as)
@@ -239,18 +241,26 @@ func (s *KeyService) issueAndStore(user *db.UserAccount, spec attrSpec) (int, er
 	}
 	userattrs := abeengine.ParseUserAttrs(userAttrsJSON)
 
-	var latest db.UserABEKey
-	version := 1
-	q := db.Get().Where("user_id = ?", user.ID).
-		Where("attribute IN ?", []string{spec.DisplayLabel, spec.IssueAttr})
-	if err := q.Order("version desc").First(&latest).Error; err == nil {
-		version = latest.Version + 1
-	}
-	record := db.UserABEKey{UserID: user.ID, Attribute: spec.DisplayLabel, Version: version, UserKeyJSON: userAttrsJSON}
-	if err := db.Get().Create(&record).Error; err != nil {
+	var keyCount int
+	err = db.Transaction(func(tx *gorm.DB) error {
+		var latest db.UserABEKey
+		version := 1
+		q := tx.Where("user_id = ?", user.ID).
+			Where("attribute IN ?", []string{spec.DisplayLabel, spec.IssueAttr})
+		if err := q.Order("version desc").First(&latest).Error; err == nil {
+			version = latest.Version + 1
+		}
+		record := db.UserABEKey{UserID: user.ID, Attribute: spec.DisplayLabel, Version: version, UserKeyJSON: userAttrsJSON}
+		if err := tx.Create(&record).Error; err != nil {
+			return err
+		}
+		keyCount = len(userattrs.Userkey)
+		return nil
+	})
+	if err != nil {
 		return 0, err
 	}
-	return len(userattrs.Userkey), nil
+	return keyCount, nil
 }
 
 func validateIssueAttrOrg(orgName, issueAttr string) error {
@@ -400,13 +410,44 @@ func canonicalIssueBody(user, attribute string) []byte {
 	return body
 }
 
-func userHasAttribute(user *db.UserAccount, attribute string) bool {
+func userOwnsIssueAttr(user *db.UserAccount, issueAttr string) bool {
+	issueAttr = strings.TrimSpace(issueAttr)
+	if issueAttr == "" {
+		return false
+	}
 	for _, owned := range UserAttributes(user) {
-		if owned == attribute {
+		if strings.EqualFold(strings.TrimSpace(owned), issueAttr) {
+			return true
+		}
+		sp, err := parseAttrSpec(owned, user.OrgName)
+		if err == nil && strings.EqualFold(sp.IssueAttr, issueAttr) {
 			return true
 		}
 	}
 	return false
+}
+
+// authorizeKeyIssue 校验用户是否有权申请该属性密钥。
+// hour / loc* 仍允许按策略自动补发；数值比较走注册值校验；其余固定属性须在注册属性中。
+func authorizeKeyIssue(user *db.UserAccount, spec attrSpec, policyLeaf string) error {
+	if err := validateIssueAttrOrg(user.OrgName, spec.IssueAttr); err != nil {
+		return err
+	}
+	if isPolicyStyleKeyAttr(spec.IssueAttr) {
+		return nil
+	}
+	if _, ok := abeengine.ParseNumericClause(strings.TrimSpace(policyLeaf)); ok {
+		_, err := resolveAttrSpecForUser(user, policyLeaf, spec.IssueAttr)
+		return err
+	}
+	if userOwnsIssueAttr(user, spec.IssueAttr) {
+		return nil
+	}
+	return fmt.Errorf("用户未注册属性 %s，无法申请密钥", spec.DisplayLabel)
+}
+
+func userHasAttribute(user *db.UserAccount, attribute string) bool {
+	return userOwnsIssueAttr(user, attribute)
 }
 
 func mapKeys(m map[string]struct{}) []string {

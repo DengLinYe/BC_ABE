@@ -3,16 +3,28 @@ package abe
 import (
 	"crypto/sha256"
 	"fmt"
+	"sync"
 
+	"bc_abe/pkg/mosaic/abe/log"
 	"bc_abe/utils/apperr"
 	mosaic "bc_abe/pkg/mosaic/abe"
 )
+
+var loggingOnce sync.Once
+
+// InitLogging 配置 mosaic 底层日志：密文/密钥等只写文件，不刷控制台。
+func InitLogging(logDir, level string) {
+	loggingOnce.Do(func() {
+		log.Configure(logDir, level, false)
+	})
+}
 
 // 对外暴露的 mosaic 类型（避免业务层直接依赖 pkg/mosaic/abe）。
 type (
 	UserAttrs  = mosaic.UserAttrs
 	Userkey    = mosaic.Userkey
 	Ciphertext = mosaic.Ciphertext
+	AuthPubs   = mosaic.AuthPubs
 )
 
 // Engine 封装 mosaic ABE 核心能力。

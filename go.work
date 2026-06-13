@@ -4,6 +4,7 @@ use (
 	.
 	./abe
 	./auth_admin
+	./benchmark
 	./chaincode
 	./user_client
 	./utils

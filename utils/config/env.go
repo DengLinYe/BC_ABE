@@ -18,7 +18,7 @@ type Config struct {
 	LogLevel          string
 	LogDir            string
 	DataDir           string
-	DBPath            string
+	MySQLDSN          string
 	FabricNetworkDir  string
 	FabricBinDir      string
 	ChaincodeName     string
@@ -55,7 +55,7 @@ func Load() Config {
 			LogLevel:          getEnv("LOG_LEVEL", "info"),
 			LogDir:            pathutil.Abs(getEnv("LOG_DIR", "./data/logs")),
 			DataDir:           pathutil.Abs(getEnv("DATA_DIR", "./data")),
-			DBPath:            pathutil.Abs(getEnv("DB_PATH", "./data/db/bc_abe.db")),
+			MySQLDSN:          getEnv("MYSQL_DSN", "root:123456@tcp(127.0.0.1:3306)/bc_abe?charset=utf8mb4&parseTime=True&loc=Local"),
 			FabricNetworkDir:  pathutil.Abs(getEnv("FABRIC_NETWORK_DIR", "./pkg/fabric/test-network")),
 			FabricBinDir:      pathutil.Abs(getEnv("FABRIC_BIN_DIR", "./pkg/fabric/bin")),
 			ChaincodeName:     getEnv("CHAINCODE_NAME", "abe_cc"),

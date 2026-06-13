@@ -87,7 +87,7 @@ func runMenu(orch *Orchestrator) {
 
 func printMenu() {
 	fmt.Println("\n========== BC ABE 区块链控制台 ==========")
-	fmt.Println(" 1) 清理区块链与衍生数据 (完整回到 0 状态)")
+	fmt.Println(" 1) 清理区块链与衍生数据 (含 MySQL，保留日志，回到 0 状态)")
 	fmt.Println(" 2) 部署区块链 (network.sh up + 链码)")
 	fmt.Println(" 3) 暂停区块链 (保留账本/证书/数据库)")
 	fmt.Println(" 4) 恢复区块链 (从暂停状态 docker start)")
@@ -151,33 +151,78 @@ func (o *Orchestrator) StopContainers() error {
 	return nil
 }
 
-// FullClean 清理 Fabric 容器、网络产物、账本卷以及本系统衍生数据，回到 0 状态。
+// FullClean 清理 Fabric 容器、网络产物、账本卷、MySQL 库以及本系统衍生数据，回到 0 状态（保留日志）。
 func (o *Orchestrator) FullClean() error {
-	log.Info("full cleanup: fabric containers, artifacts, ledger volumes, local data")
+	log.Info("full cleanup: fabric, mysql, local data (logs kept)")
+	fabricdocker.StopCCAASContainers(o.cfg)
 	if err := o.StopNetwork(); err != nil {
 		return err
+	}
+	if err := fabricdocker.Cleanup(fabricdocker.CleanupOptions{}); err != nil {
+		log.Warn("extra docker cleanup: %v", err)
 	}
 	if err := fabricdocker.CleanupVolumes(); err != nil {
 		log.Warn("cleanup docker volumes: %v", err)
 	}
-	for _, rel := range []string{
-		"files",
-		"db",
-		"fabric-ca-registrar",
-	} {
+	if err := o.cleanLocalData(); err != nil {
+		return err
+	}
+	if err := db.Reset(o.cfg); err != nil {
+		return apperr.Wrap(apperr.ErrDBConnect, "reset mysql", err)
+	}
+	o.verifyZeroState()
+	log.Info("full cleanup finished")
+	return nil
+}
+
+func (o *Orchestrator) cleanLocalData() error {
+	for _, rel := range []string{"files", "fabric-ca-registrar", "fabric", "db"} {
 		p := filepath.Join(o.cfg.DataDir, rel)
 		if err := os.RemoveAll(p); err != nil {
 			return apperr.Wrap(apperr.ErrFabricNetwork, "remove data/"+rel, err)
 		}
-		log.Info("removed data path: %s", p)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			log.Info("removed data path: %s", p)
+		}
 	}
 	for _, rel := range []string{"auth_admin/data", "user_client/data"} {
 		p := pathutil.Abs(rel)
 		if err := os.RemoveAll(p); err != nil {
 			return apperr.Wrap(apperr.ErrFabricNetwork, "remove "+rel, err)
 		}
+		log.Info("removed service data: %s", p)
 	}
 	return nil
+}
+
+func (o *Orchestrator) verifyZeroState() {
+	checks := []struct {
+		label string
+		path  string
+	}{
+		{"upload files", filepath.Join(o.cfg.DataDir, "files")},
+		{"fabric-ca registrar", filepath.Join(o.cfg.DataDir, "fabric-ca-registrar")},
+		{"ccaas cache", filepath.Join(o.cfg.DataDir, "fabric")},
+		{"peer MSP", filepath.Join(o.cfg.FabricNetworkDir, "organizations/peerOrganizations")},
+		{"orderer MSP", filepath.Join(o.cfg.FabricNetworkDir, "organizations/ordererOrganizations")},
+		{"channel artifacts", filepath.Join(o.cfg.FabricNetworkDir, "channel-artifacts")},
+	}
+	var leftovers []string
+	for _, c := range checks {
+		if _, err := os.Stat(c.path); err == nil {
+			leftovers = append(leftovers, c.label+": "+c.path)
+		}
+	}
+	if fabricdocker.CryptoMaterialReady(o.cfg.FabricNetworkDir) {
+		leftovers = append(leftovers, "fabric crypto material still complete under "+o.cfg.FabricNetworkDir)
+	}
+	if len(leftovers) == 0 {
+		log.Info("zero-state check passed")
+		return
+	}
+	for _, item := range leftovers {
+		log.Warn("zero-state leftover: %s", item)
+	}
 }
 
 func (o *Orchestrator) docker(args ...string) error {
@@ -214,8 +259,7 @@ func (o *Orchestrator) DeployNetwork(withCC bool) error {
 	if err := fabricdocker.VerifyCAContainersRunning(); err != nil {
 		log.Warn("post-deploy CA check: %v", err)
 	}
-	_ = os.MkdirAll(filepath.Dir(o.cfg.DBPath), 0o755)
-	if _, initErr := db.Init(o.cfg.DBPath); initErr == nil {
+	if _, initErr := db.Init(o.cfg); initErr == nil {
 		if seedErr := db.SeedFabricUsers(o.cfg); seedErr != nil {
 			log.Warn("fabric user seed after deploy: %v", seedErr)
 		}
@@ -230,13 +274,14 @@ func (o *Orchestrator) DeployNetwork(withCC bool) error {
 
 func (o *Orchestrator) StopNetwork() error {
 	log.Info("stopping fabric containers before network down")
-	if err := fabricdocker.Cleanup(fabricdocker.CleanupOptions{ContainerNames: o.cfg.FabricContainers}); err != nil {
+	containerNames := mergeContainerNames(o.cfg.FabricContainers, fabricdocker.DefaultContainerNames)
+	if err := fabricdocker.Cleanup(fabricdocker.CleanupOptions{ContainerNames: containerNames}); err != nil {
 		log.Warn("pre-cleanup: %v", err)
 	}
 	if err := o.networkScript("down"); err != nil {
 		log.Warn("network.sh down: %v", err)
 	}
-	if err := fabricdocker.Cleanup(fabricdocker.CleanupOptions{ContainerNames: o.cfg.FabricContainers}); err != nil {
+	if err := fabricdocker.Cleanup(fabricdocker.CleanupOptions{ContainerNames: containerNames}); err != nil {
 		log.Warn("post-cleanup containers: %v", err)
 	}
 	if err := fabricdocker.WipeNetworkArtifacts(o.cfg.FabricNetworkDir); err != nil {
@@ -267,4 +312,23 @@ func (o *Orchestrator) DeployChaincode() error {
 func (o *Orchestrator) Shutdown() {
 	o.wg.Wait()
 	time.Sleep(500 * time.Millisecond)
+}
+
+func mergeContainerNames(primary, extra []string) []string {
+	seen := make(map[string]struct{}, len(primary)+len(extra))
+	out := make([]string, 0, len(primary)+len(extra))
+	for _, list := range [][]string{primary, extra} {
+		for _, name := range list {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	return out
 }

@@ -22,6 +22,11 @@ func NewAuthService() *AuthService {
 }
 
 func (s *AuthService) Register(username, password, orgName, attributes string) (*db.UserAccount, error) {
+	var dup db.UserAccount
+	if err := db.Get().Where("username = ?", username).First(&dup).Error; err == nil {
+		return nil, apperr.Wrap(apperr.ErrInvalidInput, "create user", fmt.Errorf("username already exists"))
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err

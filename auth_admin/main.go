@@ -49,7 +49,8 @@ func main() {
 	}
 
 	logger.Init(cfg.LogDir, cfg.LogLevel)
-	if _, err := db.Init(cfg.DBPath); err != nil {
+	abeengine.InitLogging(cfg.LogDir, cfg.LogLevel)
+	if _, err := db.Init(cfg); err != nil {
 		apperr.ExitOn(log, err)
 	}
 
@@ -172,7 +173,12 @@ func (s *Server) runConsole(errCh <-chan error, srv *http.Server) error {
 				continue
 			}
 			b, _ := json.MarshalIndent(params, "", "  ")
-			fmt.Println(string(b))
+			log.Debug("global params: %s", string(b))
+			keyCount := 0
+			if m, ok := params["orgPubKeys"].(map[string]any); ok {
+				keyCount = len(m)
+			}
+			fmt.Printf("GlobalParams 已查询（%d 个 orgPubKey），详情见 %s\n", keyCount, s.cfg.LogDir)
 		case "0", "q", "Q":
 			_ = srv.Shutdown(context.Background())
 			return nil
@@ -443,7 +449,7 @@ func Run(ctx context.Context, orgName string, port int) error {
 	_ = os.Setenv("ORG_NAME", orgName)
 	cfg := config.Load()
 	logger.Init(cfg.LogDir, cfg.LogLevel)
-	if _, err := db.Init(cfg.DBPath); err != nil {
+	if _, err := db.Init(cfg); err != nil {
 		return err
 	}
 	s := newServer(orgName, port, cfg)

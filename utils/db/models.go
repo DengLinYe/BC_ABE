@@ -39,6 +39,6 @@ type UserABEKey struct {
 	UserID      uint   `gorm:"index"`
 	Attribute   string `gorm:"size:128;index"`
 	Version     int
-	UserKeyJSON string `gorm:"type:text"`
+	UserKeyJSON string `gorm:"type:longtext"`
 	CreatedAt   time.Time
 }
